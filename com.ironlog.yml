@@ -1,5 +1,5 @@
 Categories:
-  - Health & Fitness
+  - Sports & Health
 License: AGPL-3.0-or-later
 AuthorName: Michael Bosse
 SourceCode: https://github.com/IronLog/IronLog-Android
@@ -7,7 +7,7 @@ IssueTracker: https://github.com/IronLog/IronLog-Android/issues
 
 AutoName: IronLog
 Description: |-
-  IronLog is a minimalist, native Android application for logging your strength training sessions. 
+  IronLog is a minimalist, native Android application for logging your strength training sessions.
 
   Features:
   - Fast logging with shorthand input (e.g., 135x5x3)

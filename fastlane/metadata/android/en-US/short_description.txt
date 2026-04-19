@@ -1,0 +1,1 @@
+Simple, native, and private workout logger for strength training.

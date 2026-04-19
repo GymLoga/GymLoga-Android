@@ -1,0 +1,11 @@
+IronLog is a minimalist, native Android application for logging your strength training sessions. 
+
+Features:
+- Fast logging with shorthand input (e.g., 135x5x3)
+- Automatic Personal Record (PR) tracking
+- Estimated 1RM calculations
+- Exercise history and progress tracking
+- 100% private: all data stays on your device
+- Open source and free from tracking or ads
+
+Inspired by the simplicity of a paper log but enhanced with the power of native Android.
