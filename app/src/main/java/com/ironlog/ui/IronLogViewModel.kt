@@ -59,7 +59,9 @@ class IronLogViewModel(private val repository: SessionRepository) : ViewModel() 
         if (curName.isBlank() || curExNote.isBlank()) return
         val existingIndex = aExercises.indexOfFirst { it.name.lowercase() == curName.trim().lowercase() }
         if (existingIndex >= 0) {
-            aExercises[existingIndex] = aExercises[existingIndex].copy(note = curExNote.trim())
+            val oldNote = aExercises[existingIndex].note
+            val newNote = if (oldNote.isEmpty()) curExNote.trim() else "$oldNote\n${curExNote.trim()}"
+            aExercises[existingIndex] = aExercises[existingIndex].copy(note = newNote)
         }
         curExNote = ""
         showNoteInput = false

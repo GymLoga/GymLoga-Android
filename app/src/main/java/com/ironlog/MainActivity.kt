@@ -275,13 +275,42 @@ fun LogView(viewModel: IronLogViewModel, sessions: List<Session>) {
                 .padding(12.dp)
         ) {
             Column {
-                // Simplified AutoInput for now (just standard field)
+                // build suggestion list based on existing exercises
+                val suggestions = remember(viewModel.curName, allNames) {
+                    if (viewModel.curName.isBlank()) emptyList()
+                    else allNames.filter {
+                        it.lowercase().contains(viewModel.curName.lowercase()) &&
+                                it.lowercase() != viewModel.curName.lowercase()
+                    }.take(5)
+                }
+
                 IronInput(
                     value = viewModel.curName,
                     onValueChange = { viewModel.curName = it },
                     placeholder = "Exercise name",
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // use suggestions
+                if (suggestions.isNotEmpty()) {
+                    FlowRow(
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        suggestions.forEach { suggestion ->
+                            Box(
+                                modifier = Modifier
+                                    .background(SurfaceHi, RoundedCornerShape(4.dp))
+                                    .border(1.dp, Border, RoundedCornerShape(4.dp))
+                                    .clickable { viewModel.curName = suggestion }
+                                    .padding(vertical = 4.dp, horizontal = 8.dp)
+                            ) {
+                                Text(suggestion, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = Accent))
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     IronInput(

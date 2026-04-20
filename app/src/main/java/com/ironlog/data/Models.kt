@@ -27,6 +27,13 @@ data class Session(
     val exercises: List<Exercise>
 )
 
+// Added versioning capability to support converting between schema versions
+@Serializable
+data class IronLogData(
+    val version: Int = 1,
+    val sessions: List<Session>
+)
+
 object DataLogic {
     fun parseSets(raw: String): List<WorkoutSet> {
         val t = raw.trim()
