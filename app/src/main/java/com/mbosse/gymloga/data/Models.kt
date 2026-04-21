@@ -1,20 +1,20 @@
-/*                                                                                                                                                                                          
+/*
 * Copyright (C) 2026 Michael Bosse
-*                                                                                                                                                                                          
-* This program is free software: you can redistribute it and/or modify
-* it under the terms of the GNU Affero General Public License as published by                                                                                                              
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.                                                                                                                                                      
 *
-* This program is distributed in the hope that it will be useful,                                                                                                                          
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU Affero General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
 * but WITHOUT ANY WARRANTY; without even the implied warranty of
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 * GNU Affero General Public License for more details.
-*                                                                                                                                                                                          
+*
 * You should have received a copy of the GNU Affero General Public License
-* along with this program.  If not, see <https://www.gnu.org/licenses/>.                                                                                                                   
+* along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-package com.ironlog.data
+package com.mbosse.gymloga.data
 
 import kotlinx.serialization.Serializable
 import java.util.UUID
@@ -45,7 +45,7 @@ data class Session(
 
 // Added versioning capability to support converting between schema versions
 @Serializable
-data class IronLogData(
+data class GymLogaData(
     val version: Int = 1,
     val sessions: List<Session>
 )
@@ -54,7 +54,7 @@ object DataLogic {
     fun parseSets(raw: String): List<WorkoutSet> {
         val t = raw.trim()
         if (t.isEmpty()) return emptyList()
-        
+
         // Regex: 135x5x3
         val wxrxs = Regex("""^(\d+(?:\.\d+)?)\s*x\s*(\d+)\s*x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
         if (wxrxs != null) {
@@ -63,7 +63,7 @@ object DataLogic {
             val s = wxrxs.groupValues[3].toIntOrNull() ?: 0
             return List(s) { WorkoutSet(w = w, r = r) }
         }
-        
+
         // Regex: 135x5
         val wxr = Regex("""^(\d+(?:\.\d+)?)\s*x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
         if (wxr != null) {
@@ -71,7 +71,7 @@ object DataLogic {
             val r = wxr.groupValues[2].toIntOrNull() ?: 0
             return listOf(WorkoutSet(w = w, r = r))
         }
-        
+
         // Freeform with weight/reps
         val freeWxR = Regex("""(\d+(?:\.\d+)?)\s*x\s*(\d+)""", RegexOption.IGNORE_CASE).find(t)
         if (freeWxR != null) {
@@ -79,7 +79,7 @@ object DataLogic {
             val r = freeWxR.groupValues[2].toIntOrNull() ?: 0
             return listOf(WorkoutSet(w = w, r = r, note = t))
         }
-        
+
         return listOf(WorkoutSet(note = t))
     }
 
@@ -130,7 +130,7 @@ object DataLogic {
 
     fun getAllPRs(sessions: List<Session>): List<PRRecord> {
         val map = mutableMapOf<String, PRRecord>()
-        
+
         for (sess in sessions) {
             for (ex in sess.exercises) {
                 val lower = ex.name.lowercase()
@@ -139,7 +139,7 @@ object DataLogic {
                     bestE1rm = 0.0, bestE1rmW = 0.0, bestE1rmR = 0, bestE1rmDate = "",
                     totalSets = 0, totalSessions = 0
                 )
-                
+
                 var newBestW = current.bestW
                 var newBestWR = current.bestWR
                 var newBestWDate = current.bestWDate
@@ -159,6 +159,7 @@ object DataLogic {
                             newBestWR = r
                             newBestWDate = sess.date
                         }
+                        // Epley formula: e1RM = w * (1 + r/30)
                         val e = w * (1.0 + r.toDouble() / 30.0)
                         if (e > newBestE1rm) {
                             newBestE1rm = e
@@ -168,7 +169,7 @@ object DataLogic {
                         }
                     }
                 }
-                
+
                 map[lower] = current.copy(
                     bestW = newBestW, bestWR = newBestWR, bestWDate = newBestWDate,
                     bestE1rm = newBestE1rm, bestE1rmW = newBestE1rmW, bestE1rmR = newBestE1rmR,
@@ -178,7 +179,7 @@ object DataLogic {
                 )
             }
         }
-        
+
         return map.values.filter { it.bestW > 0.0 }.sortedByDescending { it.bestE1rm }
     }
 }

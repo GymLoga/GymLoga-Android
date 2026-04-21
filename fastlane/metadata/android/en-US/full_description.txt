@@ -1,4 +1,4 @@
-IronLog is a minimalist, native Android application for logging your strength training sessions. 
+GymLoga is a minimalist, native Android application for logging your strength training sessions.
 
 Features:
 - Fast logging with shorthand input (e.g., 135x5x3)

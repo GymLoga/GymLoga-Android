@@ -1,4 +1,4 @@
-package com.ironlog.ui.theme
+package com.mbosse.gymloga.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.graphics.Color
@@ -18,7 +18,7 @@ val Red = Color(0xFFB8483A)
 val Green = Color(0xFF4D8F5F)
 val Blue = Color(0xFF5080AA)
 
-val IronTypography = Typography(
+val GymTypography = Typography(
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Monospace,
         fontWeight = FontWeight.Normal,

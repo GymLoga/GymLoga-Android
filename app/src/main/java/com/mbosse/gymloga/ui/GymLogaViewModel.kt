@@ -1,28 +1,46 @@
-package com.ironlog.ui
+package com.mbosse.gymloga.ui
 
+import android.content.ContentResolver
+import android.net.Uri
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ironlog.data.*
+import com.mbosse.gymloga.data.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.SerializationException
 import java.time.LocalDate
 
-enum class IronView { LOG, HISTORY, PRS, SESSION_DETAIL, EXERCISE_HISTORY }
+sealed class ExportImportEvent {
+    object ExportSuccess : ExportImportEvent()
+    data class ExportFailure(val message: String) : ExportImportEvent()
+    data class ImportSuccess(val added: Int) : ExportImportEvent()
+    data class ImportFailure(val message: String) : ExportImportEvent()
+}
 
-class IronLogViewModel(private val repository: SessionRepository) : ViewModel() {
+enum class GymView { LOG, HISTORY, PRS, SESSION_DETAIL, EXERCISE_HISTORY }
+
+class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() {
+    private val _exportImportEvents = MutableSharedFlow<ExportImportEvent>()
+    val exportImportEvents: SharedFlow<ExportImportEvent> = _exportImportEvents.asSharedFlow()
+
     val sessions: StateFlow<List<Session>> = repository.sessionsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
-    var currentView by mutableStateOf(IronView.LOG)
+    var currentView by mutableStateOf(GymView.LOG)
     var editSessionId by mutableStateOf<String?>(null)
 
     // Log Form State
@@ -30,11 +48,15 @@ class IronLogViewModel(private val repository: SessionRepository) : ViewModel() 
     var aLabel by mutableStateOf("")
     var aNote by mutableStateOf("")
     val aExercises = mutableStateListOf<Exercise>()
-    
+
     var curName by mutableStateOf("")
     var curSet by mutableStateOf("")
     var curExNote by mutableStateOf("")
     var showNoteInput by mutableStateOf(false)
+
+    val isDateValid: Boolean
+        get() = aDate.matches(Regex("""\d{4}-\d{2}-\d{2}""")) &&
+                runCatching { java.time.LocalDate.parse(aDate) }.isSuccess
 
     // Detail States
     var selectedSession by mutableStateOf<Session?>(null)
@@ -44,7 +66,7 @@ class IronLogViewModel(private val repository: SessionRepository) : ViewModel() 
         if (curName.isBlank() || curSet.isBlank()) return
         val sets = DataLogic.parseSets(curSet)
         if (sets.isEmpty()) return
-        
+
         val existingIndex = aExercises.indexOfFirst { it.name.lowercase() == curName.trim().lowercase() }
         if (existingIndex >= 0) {
             val ex = aExercises[existingIndex]
@@ -92,17 +114,17 @@ class IronLogViewModel(private val repository: SessionRepository) : ViewModel() 
             note = aNote.trim(),
             exercises = aExercises.toList()
         )
-        
+
         val updatedSessions = if (editSessionId != null) {
             sessions.value.map { if (it.id == editSessionId) session else it }
         } else {
             listOf(session) + sessions.value
         }
-        
+
         viewModelScope.launch {
             repository.saveSessions(updatedSessions)
             clearLog()
-            currentView = IronView.HISTORY
+            currentView = GymView.HISTORY
         }
     }
 
@@ -125,13 +147,47 @@ class IronLogViewModel(private val repository: SessionRepository) : ViewModel() 
         aExercises.clear()
         aExercises.addAll(session.exercises)
         editSessionId = session.id
-        currentView = IronView.LOG
+        currentView = GymView.LOG
     }
 
     fun deleteSession(sessionId: String) {
         viewModelScope.launch {
             repository.saveSessions(sessions.value.filter { it.id != sessionId })
-            currentView = IronView.HISTORY
+            currentView = GymView.HISTORY
+        }
+    }
+
+    fun exportToUri(uri: Uri, contentResolver: ContentResolver) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                contentResolver.openOutputStream(uri)?.use { repository.exportToStream(it) }
+                _exportImportEvents.emit(ExportImportEvent.ExportSuccess)
+            } catch (e: Exception) {
+                Log.e("GymLogaViewModel", "Export failed", e)
+                _exportImportEvents.emit(ExportImportEvent.ExportFailure(e.message ?: "Unknown error"))
+            }
+        }
+    }
+
+    fun importFromUri(uri: Uri, contentResolver: ContentResolver) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val imported = contentResolver.openInputStream(uri)?.use { repository.importFromStream(it) }
+                    ?: run {
+                        _exportImportEvents.emit(ExportImportEvent.ImportFailure("Could not open file"))
+                        return@launch
+                    }
+                val existingIds = sessions.value.map { it.id }.toSet()
+                val newSessions = imported.filter { it.id !in existingIds }
+                repository.saveSessions(sessions.value + newSessions)
+                _exportImportEvents.emit(ExportImportEvent.ImportSuccess(newSessions.size))
+            } catch (e: SerializationException) {
+                Log.e("GymLogaViewModel", "Import failed", e)
+                _exportImportEvents.emit(ExportImportEvent.ImportFailure("Invalid file format"))
+            } catch (e: Exception) {
+                Log.e("GymLogaViewModel", "Import failed", e)
+                _exportImportEvents.emit(ExportImportEvent.ImportFailure(e.message ?: "Unknown error"))
+            }
         }
     }
 }
