@@ -37,6 +37,6 @@ The debug APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## License
 
-This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the [LICENSE](LICENSE) file for details. 
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0) or later**. See the LICENSE file for details. 
 
 I hope this app helps others who, like me, are looking for a simple and private way to track their strength journey.
