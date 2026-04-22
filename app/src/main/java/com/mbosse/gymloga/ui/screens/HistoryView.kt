@@ -44,7 +44,8 @@ import com.mbosse.gymloga.ui.theme.*
 @Composable
 fun HistoryView(viewModel: GymLogaViewModel, sessions: List<Session>, snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
-    val allNames = DataLogic.getAllExerciseNames(sessions)
+    val allNames = remember(sessions) { DataLogic.getAllExerciseNames(sessions) }
+    val sortedSessions = remember(sessions) { sessions.sortedByDescending { it.date } }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -131,7 +132,7 @@ fun HistoryView(viewModel: GymLogaViewModel, sessions: List<Session>, snackbarHo
             }
         }
 
-        items(sessions.sortedByDescending { it.date }) { session ->
+        items(sortedSessions) { session ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -19,15 +19,24 @@ package com.mbosse.gymloga
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import com.mbosse.gymloga.data.SessionRepository
 import com.mbosse.gymloga.ui.GymLogaApp
 import com.mbosse.gymloga.ui.GymLogaViewModel
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: GymLogaViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                GymLogaViewModel(SessionRepository(applicationContext)) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val repository = SessionRepository(applicationContext)
-        val viewModel = GymLogaViewModel(repository)
         setContent {
             GymLogaApp(viewModel)
         }

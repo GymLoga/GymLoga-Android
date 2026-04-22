@@ -16,10 +16,13 @@
 */
 package com.mbosse.gymloga.ui
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.mbosse.gymloga.ui.components.Header
 import com.mbosse.gymloga.ui.components.Tabs
@@ -44,17 +47,24 @@ fun GymLogaApp(viewModel: GymLogaViewModel) {
             snackbarHost = { SnackbarHost(snackbarHostState) },
             containerColor = Bg
         ) { paddingValues ->
-            Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            val focusManager = LocalFocusManager.current
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } }
+            ) {
                 Header(sessions.size)
                 Tabs(viewModel.currentView, viewModel.editSessionId != null) { viewModel.currentView = it }
 
                 Box(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
                     when (viewModel.currentView) {
-                        GymView.LOG -> LogView(viewModel, sessions)
+                        GymView.LOG -> LogView(viewModel)
                         GymView.HISTORY -> HistoryView(viewModel, sessions, snackbarHostState)
                         GymView.PRS -> PRsView(viewModel, sessions)
                         GymView.SESSION_DETAIL -> SessionDetailView(viewModel)
                         GymView.EXERCISE_HISTORY -> ExerciseHistoryView(viewModel, sessions)
+                        GymView.ADD_EXERCISE -> AddExerciseView(viewModel)
                     }
                 }
             }

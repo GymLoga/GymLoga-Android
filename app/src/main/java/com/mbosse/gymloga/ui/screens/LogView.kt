@@ -23,24 +23,34 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mbosse.gymloga.data.DataLogic
-import com.mbosse.gymloga.data.Session
+import com.mbosse.gymloga.data.Exercise
+import com.mbosse.gymloga.data.ExerciseDefinition
 import com.mbosse.gymloga.ui.GymLogaViewModel
+import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.GymInput
 import com.mbosse.gymloga.ui.components.SetBadge
 import com.mbosse.gymloga.ui.theme.*
 
 @Composable
-fun LogView(viewModel: GymLogaViewModel, sessions: List<Session>) {
+fun LogView(viewModel: GymLogaViewModel) {
     val scrollState = rememberScrollState()
-    val allNames = DataLogic.getAllExerciseNames(sessions)
+    val exerciseDefinitions by viewModel.exerciseDefinitions.collectAsState()
+    val focusManager = LocalFocusManager.current
 
-    Column(modifier = Modifier.verticalScroll(scrollState).padding(vertical = 12.dp)) {
+    Column(
+        modifier = Modifier
+            .verticalScroll(scrollState)
+            .imePadding()
+            .padding(vertical = 12.dp)
+    ) {
+        // Session header
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column {
                 GymInput(
@@ -74,149 +84,48 @@ fun LogView(viewModel: GymLogaViewModel, sessions: List<Session>) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        viewModel.aExercises.forEach { ex ->
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 6.dp)
-                    .background(Surface, RoundedCornerShape(8.dp))
-                    .border(1.dp, Border, RoundedCornerShape(8.dp))
-                    .padding(10.dp, 12.dp)
-            ) {
-                Column {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(
-                            ex.name.uppercase(),
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp),
-                            modifier = Modifier.clickable { viewModel.curName = ex.name }
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                "UNDO",
-                                style = MaterialTheme.typography.labelSmall.copy(color = Red),
-                                modifier = Modifier.clickable { viewModel.removeLastSet(ex.id) }
-                            )
-                            Text(
-                                "DEL",
-                                style = MaterialTheme.typography.labelSmall.copy(color = Red),
-                                modifier = Modifier.clickable { viewModel.deleteExercise(ex.id) }
-                            )
-                        }
-                    }
-                    FlowRow(modifier = Modifier.padding(top = 4.dp)) {
-                        ex.sets.forEach { SetBadge(it) }
-                    }
-                    if (ex.note.isNotEmpty()) {
-                        Text(
-                            ex.note,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim, fontStyle = FontStyle.Italic),
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-                .background(Surface, RoundedCornerShape(8.dp))
-                .border(1.dp, Accent.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-                .padding(12.dp)
-        ) {
-            Column {
-                val suggestions = remember(viewModel.curName, allNames) {
-                    if (viewModel.curName.isBlank()) emptyList()
-                    else allNames.filter {
-                        it.lowercase().contains(viewModel.curName.lowercase()) &&
-                                it.lowercase() != viewModel.curName.lowercase()
-                    }.take(5)
-                }
-
-                GymInput(
-                    value = viewModel.curName,
-                    onValueChange = { viewModel.curName = it },
-                    placeholder = "Exercise name",
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (suggestions.isNotEmpty()) {
-                    FlowRow(
-                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        suggestions.forEach { suggestion ->
-                            Box(
-                                modifier = Modifier
-                                    .background(SurfaceHi, RoundedCornerShape(4.dp))
-                                    .border(1.dp, Border, RoundedCornerShape(4.dp))
-                                    .clickable { viewModel.curName = suggestion }
-                                    .padding(vertical = 4.dp, horizontal = 8.dp)
-                            ) {
-                                Text(suggestion, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = Accent))
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GymInput(
-                        value = viewModel.curSet,
-                        onValueChange = { viewModel.curSet = it },
-                        placeholder = "135x5 or 20x10x2",
-                        modifier = Modifier.weight(1f),
-                        onDone = { viewModel.addSet() }
-                    )
-                    Button(
-                        onClick = { viewModel.addSet() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Accent),
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(10.dp, 14.dp)
-                    ) {
-                        Text("ADD", style = MaterialTheme.typography.labelSmall.copy(color = Bg, fontWeight = FontWeight.ExtraBold))
-                    }
-                }
-
-                if (!viewModel.showNoteInput) {
-                    Text(
-                        "+ note",
-                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim),
-                        modifier = Modifier.clickable { viewModel.showNoteInput = true }.padding(top = 4.dp)
-                    )
-                } else {
-                    Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GymInput(
-                            value = viewModel.curExNote,
-                            onValueChange = { viewModel.curExNote = it },
-                            placeholder = "ezpz, slow bar, etc",
-                            modifier = Modifier.weight(1f),
-                            onDone = { viewModel.addExNote() }
-                        )
-                        OutlinedButton(
-                            onClick = { viewModel.addExNote() },
-                            border = BorderStroke(1.dp, Accent),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text("OK", style = MaterialTheme.typography.labelSmall.copy(color = Accent))
-                        }
-                    }
-                }
-            }
-        }
+        // Exercise picker — only for selecting/adding new exercises
+        ExercisePicker(
+            definitions = exerciseDefinitions,
+            onSelect = { viewModel.selectExercise(it) },
+            onDefineNew = { viewModel.currentView = GymView.ADD_EXERCISE }
+        )
 
         Text(
             "135x5 one set · 20x10x2 two sets · 30s freeform",
             style = MaterialTheme.typography.labelSmall.copy(color = TextDim),
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
         )
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // Exercise cards — newest first, edit controls inline on the active one
+        viewModel.aExercises.reversed().forEach { ex ->
+            val isActive = ex.name.lowercase() == viewModel.curName.lowercase()
+            ExerciseCard(
+                ex = ex,
+                isActive = isActive,
+                onActivate = { viewModel.selectExercise(ex.name) },
+                onUndo = { viewModel.removeLastSet(ex.id) },
+                onDelete = { viewModel.deleteExercise(ex.id) },
+                curSet = viewModel.curSet,
+                onCurSetChange = { viewModel.curSet = it },
+                onAddSet = { viewModel.addSet(); focusManager.clearFocus() },
+                showNoteInput = viewModel.showNoteInput,
+                onShowNote = { viewModel.showNoteInput = true },
+                curExNote = viewModel.curExNote,
+                onCurExNoteChange = { viewModel.curExNote = it },
+                onAddNote = { viewModel.addExNote() }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = { viewModel.saveSession() },
                 modifier = Modifier.weight(1f),
-                enabled = viewModel.aExercises.isNotEmpty() && viewModel.isDateValid,
+                enabled = viewModel.aExercises.any { it.sets.isNotEmpty() } && viewModel.isDateValid,
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, disabledContainerColor = TextDim.copy(alpha = 0.4f)),
                 shape = RoundedCornerShape(6.dp)
             ) {
@@ -234,5 +143,207 @@ fun LogView(viewModel: GymLogaViewModel, sessions: List<Session>) {
             }
         }
         Spacer(modifier = Modifier.height(80.dp))
+    }
+}
+
+@Composable
+private fun ExerciseCard(
+    ex: Exercise,
+    isActive: Boolean,
+    onActivate: () -> Unit,
+    onUndo: () -> Unit,
+    onDelete: () -> Unit,
+    curSet: String,
+    onCurSetChange: (String) -> Unit,
+    onAddSet: () -> Unit,
+    showNoteInput: Boolean,
+    onShowNote: () -> Unit,
+    curExNote: String,
+    onCurExNoteChange: (String) -> Unit,
+    onAddNote: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 6.dp)
+            .background(Surface, RoundedCornerShape(8.dp))
+            .border(1.dp, if (isActive) Accent.copy(alpha = 0.5f) else Border, RoundedCornerShape(8.dp))
+            .clickable { onActivate() }
+            .padding(10.dp, 12.dp)
+    ) {
+        Column {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    ex.name.uppercase(),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        color = if (isActive) Accent else MaterialTheme.colorScheme.onSurface
+                    )
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "UNDO",
+                        style = MaterialTheme.typography.labelSmall.copy(color = Red),
+                        modifier = Modifier.clickable { onUndo() }
+                    )
+                    Text(
+                        "DEL",
+                        style = MaterialTheme.typography.labelSmall.copy(color = Red),
+                        modifier = Modifier.clickable { onDelete() }
+                    )
+                }
+            }
+
+            if (ex.sets.isNotEmpty()) {
+                FlowRow(modifier = Modifier.padding(top = 4.dp)) {
+                    ex.sets.forEach { SetBadge(it) }
+                }
+            }
+
+            if (ex.note.isNotEmpty()) {
+                Text(
+                    ex.note,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim, fontStyle = FontStyle.Italic),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            // Inline edit controls — only on the active card
+            if (isActive) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Divider(color = Border.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GymInput(
+                        value = curSet,
+                        onValueChange = onCurSetChange,
+                        placeholder = "135x5 or 20x10x2",
+                        modifier = Modifier.weight(1f),
+                        onDone = { onAddSet() }
+                    )
+                    Button(
+                        onClick = { onAddSet() },
+                        enabled = curSet.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Accent, disabledContainerColor = TextDim.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(10.dp, 14.dp)
+                    ) {
+                        Text("ADD", style = MaterialTheme.typography.labelSmall.copy(color = Bg, fontWeight = FontWeight.ExtraBold))
+                    }
+                }
+
+                if (!showNoteInput) {
+                    Text(
+                        "+ note",
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim),
+                        modifier = Modifier.clickable { onShowNote() }.padding(top = 4.dp)
+                    )
+                } else {
+                    Row(modifier = Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GymInput(
+                            value = curExNote,
+                            onValueChange = onCurExNoteChange,
+                            placeholder = "ezpz, slow bar, etc",
+                            modifier = Modifier.weight(1f),
+                            onDone = { onAddNote() }
+                        )
+                        OutlinedButton(
+                            onClick = { onAddNote() },
+                            border = BorderStroke(1.dp, Accent),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("OK", style = MaterialTheme.typography.labelSmall.copy(color = Accent))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExercisePicker(
+    definitions: List<ExerciseDefinition>,
+    onSelect: (String) -> Unit,
+    onDefineNew: () -> Unit
+) {
+    var filter by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        GymInput(
+            value = filter,
+            onValueChange = { filter = it; expanded = true },
+            placeholder = "Add exercise…",
+            modifier = Modifier
+                .weight(1f)
+                .onFocusChanged { if (it.isFocused) expanded = true }
+        )
+        Box(
+            modifier = Modifier
+                .background(SurfaceHi, RoundedCornerShape(6.dp))
+                .border(1.dp, Border, RoundedCornerShape(6.dp))
+                .clickable { expanded = !expanded }
+                .padding(10.dp, 12.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                if (expanded) "▲" else "▼",
+                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim)
+            )
+        }
+    }
+
+    if (expanded) {
+        val matches = remember(filter, definitions) {
+            if (filter.isBlank()) definitions
+            else definitions.filter { it.name.lowercase().contains(filter.lowercase()) }
+        }.take(8)
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp)
+                .background(SurfaceHi, RoundedCornerShape(6.dp))
+                .border(1.dp, Border, RoundedCornerShape(6.dp))
+        ) {
+            matches.forEach { def ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(def.name); filter = ""; expanded = false }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(def.name, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp))
+                        if (def.category.isNotEmpty()) {
+                            Text(def.category, style = MaterialTheme.typography.labelSmall.copy(color = TextDim))
+                        }
+                    }
+                }
+                Divider(color = Border, thickness = 0.5.dp)
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onDefineNew(); filter = ""; expanded = false }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    "+ Define new exercise",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, color = Accent)
+                )
+            }
+        }
     }
 }

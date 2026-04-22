@@ -43,11 +43,19 @@ data class Session(
     val exercises: List<Exercise>
 )
 
+@Serializable
+data class ExerciseDefinition(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val category: String = ""
+)
+
 // Added versioning capability to support converting between schema versions
 @Serializable
 data class GymLogaData(
     val version: Int = 1,
-    val sessions: List<Session>
+    val sessions: List<Session>,
+    val exerciseDefinitions: List<ExerciseDefinition> = emptyList()
 )
 
 object DataLogic {
@@ -70,6 +78,13 @@ object DataLogic {
             val w = wxr.groupValues[1].toDoubleOrNull() ?: 0.0
             val r = wxr.groupValues[2].toIntOrNull() ?: 0
             return listOf(WorkoutSet(w = w, r = r))
+        }
+
+        // Regex: 135 (bare weight, assume 1 rep)
+        val wOnly = Regex("""^(\d+(?:\.\d+)?)$""").find(t)
+        if (wOnly != null) {
+            val w = wOnly.groupValues[1].toDoubleOrNull() ?: 0.0
+            return listOf(WorkoutSet(w = w, r = 1))
         }
 
         // Freeform with weight/reps
