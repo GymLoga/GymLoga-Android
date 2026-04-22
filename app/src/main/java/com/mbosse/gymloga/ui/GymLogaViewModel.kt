@@ -28,13 +28,19 @@ sealed class ExportImportEvent {
     data class ImportFailure(val message: String) : ExportImportEvent()
 }
 
-enum class GymView { LOG, HISTORY, PRS, SESSION_DETAIL, EXERCISE_HISTORY }
+enum class GymView { LOG, HISTORY, PRS, SESSION_DETAIL, EXERCISE_HISTORY, ADD_EXERCISE }
 
 class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() {
     private val _exportImportEvents = MutableSharedFlow<ExportImportEvent>()
     val exportImportEvents: SharedFlow<ExportImportEvent> = _exportImportEvents.asSharedFlow()
 
     val sessions: StateFlow<List<Session>> = repository.sessionsFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val exerciseDefinitions: StateFlow<List<ExerciseDefinition>> = repository.exerciseDefinitionsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
@@ -77,6 +83,26 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
         curSet = ""
     }
 
+    fun selectExercise(name: String) {
+        val trimmed = name.trim()
+        curName = trimmed
+        curSet = ""
+        curExNote = ""
+        showNoteInput = false
+        // Create a placeholder card so the edit controls appear immediately
+        if (aExercises.none { it.name.lowercase() == trimmed.lowercase() }) {
+            aExercises.add(Exercise(name = trimmed, sets = emptyList()))
+        }
+    }
+
+    fun clearCurrentExercise() {
+        aExercises.removeAll { it.name.lowercase() == curName.lowercase() && it.sets.isEmpty() }
+        curName = ""
+        curSet = ""
+        curExNote = ""
+        showNoteInput = false
+    }
+
     fun addExNote() {
         if (curName.isBlank() || curExNote.isBlank()) return
         val existingIndex = aExercises.indexOfFirst { it.name.lowercase() == curName.trim().lowercase() }
@@ -105,14 +131,28 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
         aExercises.removeAll { it.id == exerciseId }
     }
 
+    fun addExerciseDefinition(name: String, category: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val existing = exerciseDefinitions.value
+            if (existing.none { it.name.lowercase() == trimmed.lowercase() }) {
+                repository.saveExerciseDefinitions(existing + ExerciseDefinition(name = trimmed, category = category.trim()))
+            }
+            selectExercise(trimmed)
+            currentView = GymView.LOG
+        }
+    }
+
     fun saveSession() {
-        if (aExercises.isEmpty()) return
+        val validExercises = aExercises.filter { it.sets.isNotEmpty() }
+        if (validExercises.isEmpty()) return
         val session = Session(
             id = editSessionId ?: java.util.UUID.randomUUID().toString(),
             date = aDate,
             label = aLabel.trim(),
             note = aNote.trim(),
-            exercises = aExercises.toList()
+            exercises = validExercises
         )
 
         val updatedSessions = if (editSessionId != null) {

@@ -36,34 +36,65 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gy
 class SessionRepository(private val context: Context) {
     private val SESSIONS_KEY = stringPreferencesKey("gymloga:sessions")
 
-    val sessionsFlow: Flow<List<Session>> = context.dataStore.data.map { preferences ->
-        val sessionsJson = preferences[SESSIONS_KEY] ?: "[]"
-        try {
-            // implicit version 0 was unversioned, so we upconvert
-            val element = Json.parseToJsonElement(sessionsJson)
-            if (element is JsonArray) {
-                // Migrate old format (direct list)
-                Json.decodeFromJsonElement<List<Session>>(element)
-            } else {
-                // this is version 1, for now the current version
-                // New format (wrapped in GymLogaData)
-                Json.decodeFromJsonElement<GymLogaData>(element).sessions
-            }
-        } catch (e: SerializationException) {
-            android.util.Log.e("SessionRepository", "Failed to deserialize sessions", e)
-            emptyList()
+    private fun parseData(json: String): GymLogaData {
+        val element = Json.parseToJsonElement(json)
+        val data = if (element is JsonArray) {
+            GymLogaData(sessions = Json.decodeFromJsonElement(element))
+        } else {
+            Json.decodeFromJsonElement(element)
+        }
+        // Seed exercise definitions from session history on first migration
+        return if (data.exerciseDefinitions.isEmpty() && data.sessions.isNotEmpty()) {
+            val seeded = DataLogic.getAllExerciseNames(data.sessions)
+                .map { ExerciseDefinition(name = it) }
+            data.copy(exerciseDefinitions = seeded)
+        } else {
+            data
         }
     }
 
+    private val dataFlow: Flow<GymLogaData> = context.dataStore.data.map { preferences ->
+        val json = preferences[SESSIONS_KEY] ?: "[]"
+        try {
+            parseData(json)
+        } catch (e: SerializationException) {
+            android.util.Log.e("SessionRepository", "Failed to deserialize data", e)
+            GymLogaData(sessions = emptyList())
+        }
+    }
+
+    val sessionsFlow: Flow<List<Session>> = dataFlow.map { it.sessions }
+
+    val exerciseDefinitionsFlow: Flow<List<ExerciseDefinition>> = dataFlow.map { it.exerciseDefinitions }
+
     suspend fun saveSessions(sessions: List<Session>) {
         context.dataStore.edit { preferences ->
-            val data = GymLogaData(version = 1, sessions = sessions)
+            val current = try {
+                preferences[SESSIONS_KEY]?.let { parseData(it) }
+                    ?: GymLogaData(sessions = emptyList())
+            } catch (e: Exception) {
+                GymLogaData(sessions = emptyList())
+            }
+            val data = current.copy(sessions = sessions)
+            preferences[SESSIONS_KEY] = Json.encodeToString(data)
+        }
+    }
+
+    suspend fun saveExerciseDefinitions(defs: List<ExerciseDefinition>) {
+        context.dataStore.edit { preferences ->
+            val current = try {
+                preferences[SESSIONS_KEY]?.let { parseData(it) }
+                    ?: GymLogaData(sessions = emptyList())
+            } catch (e: Exception) {
+                GymLogaData(sessions = emptyList())
+            }
+            val data = current.copy(exerciseDefinitions = defs)
             preferences[SESSIONS_KEY] = Json.encodeToString(data)
         }
     }
 
     suspend fun exportToStream(outputStream: OutputStream) {
-        val data = GymLogaData(version = 1, sessions = sessionsFlow.first())
+        val data = dataFlow.first()
         val prettyJson = kotlinx.serialization.json.Json { prettyPrint = true }
         outputStream.bufferedWriter().use { it.write(prettyJson.encodeToString(data)) }
     }
