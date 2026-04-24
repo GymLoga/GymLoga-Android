@@ -87,8 +87,9 @@ fun LogView(viewModel: GymLogaViewModel) {
         // Exercise picker — only for selecting/adding new exercises
         ExercisePicker(
             definitions = exerciseDefinitions,
-            onSelect = { viewModel.selectExercise(it) },
-            onDefineNew = { viewModel.currentView = GymView.ADD_EXERCISE }
+            onSelect = { name, defId -> viewModel.selectExercise(name, defId) },
+            onDefineNew = { viewModel.currentView = GymView.ADD_EXERCISE },
+            onManage = { viewModel.currentView = GymView.MANAGE_EXERCISES }
         )
 
         Text(
@@ -266,8 +267,9 @@ private fun ExerciseCard(
 @Composable
 private fun ExercisePicker(
     definitions: List<ExerciseDefinition>,
-    onSelect: (String) -> Unit,
-    onDefineNew: () -> Unit
+    onSelect: (name: String, defId: String) -> Unit,
+    onDefineNew: () -> Unit,
+    onManage: () -> Unit
 ) {
     var filter by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
@@ -301,9 +303,10 @@ private fun ExercisePicker(
     }
 
     if (expanded) {
-        val matches = remember(filter, definitions) {
-            if (filter.isBlank()) definitions
-            else definitions.filter { it.name.lowercase().contains(filter.lowercase()) }
+        val active = definitions.filter { it.active }
+        val matches = remember(filter, active) {
+            if (filter.isBlank()) active
+            else active.filter { it.name.lowercase().contains(filter.lowercase()) }
         }.take(8)
 
         Column(
@@ -317,7 +320,7 @@ private fun ExercisePicker(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelect(def.name); filter = ""; expanded = false }
+                        .clickable { onSelect(def.name, def.id); filter = ""; expanded = false }
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
                     Row(
@@ -342,6 +345,17 @@ private fun ExercisePicker(
                 Text(
                     "+ Define new exercise",
                     style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, color = Accent)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onManage(); filter = ""; expanded = false }
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    "Manage exercises",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, color = TextDim)
                 )
             }
         }
