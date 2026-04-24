@@ -39,6 +39,7 @@ import com.mbosse.gymloga.ui.GymLogaViewModel
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.formatDate
+import com.mbosse.gymloga.ui.components.formatVolume
 import com.mbosse.gymloga.ui.theme.*
 
 @Composable
@@ -148,7 +149,11 @@ fun HistoryView(viewModel: GymLogaViewModel, sessions: List<Session>, snackbarHo
                 Column {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(formatDate(session.date), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Accent))
-                        Text("${session.exercises.size} ex", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
+                        val vol = DataLogic.getSessionVolume(session)
+                        Text(
+                            "${session.exercises.size} ex" + if (vol > 0) " · ${formatVolume(vol)}" else "",
+                            style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim)
+                        )
                     }
                     if (session.label.isNotEmpty()) {
                         Text(session.label, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold))

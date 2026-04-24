@@ -71,6 +71,7 @@ fun PRsView(viewModel: GymLogaViewModel, sessions: List<Session>) {
                     .border(1.dp, Border, RoundedCornerShape(8.dp))
                     .clickable {
                         viewModel.selectedExerciseName = pr.name
+                        viewModel.exerciseHistorySource = GymView.PRS
                         viewModel.currentView = GymView.EXERCISE_HISTORY
                     }
                     .padding(12.dp, 14.dp)

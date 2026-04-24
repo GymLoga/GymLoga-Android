@@ -30,8 +30,14 @@ import com.mbosse.gymloga.ui.theme.*
 
 @Composable
 fun AddExerciseView(viewModel: GymLogaViewModel) {
-    var name by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
+    val defId = viewModel.editDefinitionId
+    val isEdit = defId != null
+    val existingDef = remember(defId) {
+        if (defId != null) viewModel.exerciseDefinitions.value.find { it.id == defId } else null
+    }
+
+    var name by remember(defId) { mutableStateOf(existingDef?.name ?: "") }
+    var category by remember(defId) { mutableStateOf(existingDef?.category ?: "") }
 
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         Row(
@@ -39,10 +45,13 @@ fun AddExerciseView(viewModel: GymLogaViewModel) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                "DEFINE EXERCISE",
+                if (isEdit) "EDIT EXERCISE" else "DEFINE EXERCISE",
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified)
             )
-            TextButton(onClick = { viewModel.currentView = GymView.LOG }) {
+            TextButton(onClick = {
+                viewModel.editDefinitionId = null
+                viewModel.currentView = if (isEdit) GymView.MANAGE_EXERCISES else GymView.LOG
+            }) {
                 Text("← BACK", style = MaterialTheme.typography.labelSmall.copy(color = Accent))
             }
         }
@@ -78,7 +87,15 @@ fun AddExerciseView(viewModel: GymLogaViewModel) {
         Spacer(modifier = Modifier.height(20.dp))
 
         Button(
-            onClick = { viewModel.addExerciseDefinition(name, category) },
+            onClick = {
+                if (isEdit && defId != null) {
+                    viewModel.updateExerciseDefinition(defId, name, category)
+                    viewModel.editDefinitionId = null
+                    viewModel.currentView = GymView.MANAGE_EXERCISES
+                } else {
+                    viewModel.addExerciseDefinition(name, category)
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             enabled = name.isNotBlank(),
             colors = ButtonDefaults.buttonColors(

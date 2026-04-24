@@ -22,6 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -29,7 +33,6 @@ import androidx.compose.ui.unit.sp
 import com.mbosse.gymloga.data.DataLogic
 import com.mbosse.gymloga.data.Session
 import com.mbosse.gymloga.ui.GymLogaViewModel
-import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.SetBadge
 import com.mbosse.gymloga.ui.components.formatDate
@@ -42,7 +45,7 @@ fun ExerciseHistoryView(viewModel: GymLogaViewModel, sessions: List<Session>) {
 
     Column(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp).verticalScroll(rememberScrollState())) {
         OutlinedButton(
-            onClick = { viewModel.currentView = GymView.HISTORY },
+            onClick = { viewModel.currentView = viewModel.exerciseHistorySource },
             border = BorderStroke(1.dp, Accent),
             shape = RoundedCornerShape(6.dp),
             modifier = Modifier.padding(bottom = 10.dp),
@@ -73,6 +76,8 @@ fun ExerciseHistoryView(viewModel: GymLogaViewModel, sessions: List<Session>) {
                 }
             }
 
+            E1rmChart(history)
+
             history.forEach { entry ->
                 Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -96,5 +101,63 @@ fun ExerciseHistoryView(viewModel: GymLogaViewModel, sessions: List<Session>) {
             }
         }
         Spacer(modifier = Modifier.height(80.dp))
+    }
+}
+
+@Composable
+private fun E1rmChart(history: List<DataLogic.ExerciseHistoryEntry>) {
+    val chronological = history.reversed().filter { it.bestW > 0 }
+    if (chronological.size < 2) return
+
+    val e1rms = chronological.map { it.bestW * (1 + it.bestR.toDouble() / 30.0) }
+    val minVal = e1rms.min()
+    val maxVal = e1rms.max()
+    val range = (maxVal - minVal).coerceAtLeast(1.0)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp)
+            .height(110.dp)
+            .background(Surface, RoundedCornerShape(8.dp))
+            .border(1.dp, Border, RoundedCornerShape(8.dp))
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 10.dp)) {
+            val w = size.width
+            val h = size.height
+            val step = w / (e1rms.size - 1).toFloat()
+
+            fun xOf(i: Int) = i * step
+            fun yOf(v: Double) = h - ((v - minVal) / range * h).toFloat()
+
+            val path = Path()
+            e1rms.forEachIndexed { i, v ->
+                val x = xOf(i); val y = yOf(v)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(path, color = Accent, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+            e1rms.forEachIndexed { i, v ->
+                drawCircle(color = Green, radius = 3.dp.toPx(), center = Offset(xOf(i), yOf(v)))
+            }
+        }
+
+        // Date labels at bottom corners
+        Row(
+            modifier = Modifier.fillMaxWidth().align(androidx.compose.ui.Alignment.BottomCenter).padding(horizontal = 14.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(formatDate(chronological.first().date), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 9.sp, color = TextDim))
+            Text(formatDate(chronological.last().date), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 9.sp, color = TextDim))
+        }
+
+        // Y-axis labels
+        Column(
+            modifier = Modifier.fillMaxHeight().padding(start = 3.dp, top = 6.dp, bottom = 18.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("${kotlin.math.round(maxVal).toLong()}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 9.sp, color = TextDim))
+            Text("${kotlin.math.round(minVal).toLong()}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 9.sp, color = TextDim))
+        }
     }
 }

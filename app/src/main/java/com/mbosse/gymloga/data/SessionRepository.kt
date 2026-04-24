@@ -43,13 +43,19 @@ class SessionRepository(private val context: Context) {
         } else {
             Json.decodeFromJsonElement(element)
         }
-        // Seed exercise definitions from session history on first migration
-        return if (data.exerciseDefinitions.isEmpty() && data.sessions.isNotEmpty()) {
-            val seeded = DataLogic.getAllExerciseNames(data.sessions)
-                .map { ExerciseDefinition(name = it) }
-            data.copy(exerciseDefinitions = seeded)
-        } else {
-            data
+        return when {
+            data.exerciseDefinitions.isNotEmpty() -> data
+            data.sessions.isNotEmpty() -> {
+                // Migrate: seed definitions from existing session history
+                val seeded = DataLogic.getAllExerciseNames(data.sessions).map { ExerciseDefinition(name = it) }
+                data.copy(exerciseDefinitions = seeded)
+            }
+            else -> {
+                // Fresh install: provide a starter set
+                val defaults = listOf("Bench Press", "Overhead Press", "Power Clean", "Deadlift", "Back Squat")
+                    .map { ExerciseDefinition(name = it) }
+                data.copy(exerciseDefinitions = defaults)
+            }
         }
     }
 
@@ -90,6 +96,54 @@ class SessionRepository(private val context: Context) {
             }
             val data = current.copy(exerciseDefinitions = defs)
             preferences[SESSIONS_KEY] = Json.encodeToString(data)
+        }
+    }
+
+    suspend fun renameExerciseDefinition(defId: String, oldName: String, newName: String) {
+        context.dataStore.edit { preferences ->
+            val current = try {
+                preferences[SESSIONS_KEY]?.let { parseData(it) } ?: GymLogaData(sessions = emptyList())
+            } catch (e: Exception) {
+                GymLogaData(sessions = emptyList())
+            }
+            val updatedDefs = current.exerciseDefinitions.map {
+                if (it.id == defId) it.copy(name = newName) else it
+            }
+            val updatedSessions = DataLogic.applyRename(current.sessions, defId, oldName, newName)
+            preferences[SESSIONS_KEY] = Json.encodeToString(current.copy(exerciseDefinitions = updatedDefs, sessions = updatedSessions))
+        }
+    }
+
+    suspend fun updateExerciseDefinition(defId: String, newName: String, newCategory: String, oldName: String) {
+        context.dataStore.edit { preferences ->
+            val current = try {
+                preferences[SESSIONS_KEY]?.let { parseData(it) } ?: GymLogaData(sessions = emptyList())
+            } catch (e: Exception) {
+                GymLogaData(sessions = emptyList())
+            }
+            val nameChanged = newName != oldName
+            val updatedDefs = current.exerciseDefinitions.map {
+                if (it.id == defId) it.copy(name = newName, category = newCategory) else it
+            }
+            val updatedSessions = if (nameChanged)
+                DataLogic.applyRename(current.sessions, defId, oldName, newName)
+            else
+                current.sessions
+            preferences[SESSIONS_KEY] = Json.encodeToString(current.copy(exerciseDefinitions = updatedDefs, sessions = updatedSessions))
+        }
+    }
+
+    suspend fun setExerciseDefinitionActive(defId: String, active: Boolean) {
+        context.dataStore.edit { preferences ->
+            val current = try {
+                preferences[SESSIONS_KEY]?.let { parseData(it) } ?: GymLogaData(sessions = emptyList())
+            } catch (e: Exception) {
+                GymLogaData(sessions = emptyList())
+            }
+            val updatedDefs = current.exerciseDefinitions.map {
+                if (it.id == defId) it.copy(active = active) else it
+            }
+            preferences[SESSIONS_KEY] = Json.encodeToString(current.copy(exerciseDefinitions = updatedDefs))
         }
     }
 

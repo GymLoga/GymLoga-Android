@@ -65,6 +65,7 @@ fun GymLogaApp(viewModel: GymLogaViewModel) {
                         GymView.SESSION_DETAIL -> SessionDetailView(viewModel)
                         GymView.EXERCISE_HISTORY -> ExerciseHistoryView(viewModel, sessions)
                         GymView.ADD_EXERCISE -> AddExerciseView(viewModel)
+                        GymView.MANAGE_EXERCISES -> ManageExercisesView(viewModel)
                     }
                 }
             }

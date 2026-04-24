@@ -27,11 +27,13 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mbosse.gymloga.data.DataLogic
 import com.mbosse.gymloga.ui.GymLogaViewModel
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.SetBadge
 import com.mbosse.gymloga.ui.components.formatDate
+import com.mbosse.gymloga.ui.components.formatVolume
 import com.mbosse.gymloga.ui.theme.*
 
 @Composable
@@ -72,6 +74,10 @@ fun SessionDetailView(viewModel: GymLogaViewModel) {
                 Text(formatDate(session.date), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Accent))
                 if (session.label.isNotEmpty()) {
                     Text(session.label, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold))
+                }
+                val vol = DataLogic.getSessionVolume(session)
+                if (vol > 0) {
+                    Text(formatVolume(vol) + " total volume", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

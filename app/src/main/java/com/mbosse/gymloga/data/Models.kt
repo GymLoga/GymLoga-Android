@@ -31,7 +31,8 @@ data class Exercise(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val sets: List<WorkoutSet>,
-    val note: String = ""
+    val note: String = "",
+    val definitionId: String? = null
 )
 
 @Serializable
@@ -47,7 +48,8 @@ data class Session(
 data class ExerciseDefinition(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
-    val category: String = ""
+    val category: String = "",
+    val active: Boolean = true
 )
 
 // Added versioning capability to support converting between schema versions
@@ -97,6 +99,20 @@ object DataLogic {
 
         return listOf(WorkoutSet(note = t))
     }
+
+    fun getSessionVolume(session: Session): Long =
+        session.exercises.sumOf { ex ->
+            ex.sets.sumOf { set -> ((set.w ?: 0.0) * (set.r ?: 0)).toLong() }
+        }
+
+    fun applyRename(sessions: List<Session>, defId: String, oldName: String, newName: String): List<Session> =
+        sessions.map { sess ->
+            sess.copy(exercises = sess.exercises.map { ex ->
+                val matchById = ex.definitionId == defId
+                val matchByName = ex.definitionId == null && ex.name.lowercase() == oldName.lowercase()
+                if (matchById || matchByName) ex.copy(name = newName) else ex
+            })
+        }
 
     fun getAllExerciseNames(sessions: List<Session>): List<String> {
         return sessions.flatMap { sess -> sess.exercises.map { it.name } }
