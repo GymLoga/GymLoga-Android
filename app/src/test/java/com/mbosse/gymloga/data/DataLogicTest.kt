@@ -144,4 +144,63 @@ class DataLogicTest {
         assertEquals(140.0, prs[0].bestW, 0.001)
         assertEquals(2, prs[0].totalSessions)
     }
+
+    // ── suggestSets ────────────────────────────────────────────────────────────
+
+    @Test
+    fun suggestSets_barbell_lbs() {
+        val pr = DataLogic.PRRecord(
+            name = "Bench Press",
+            bestW = 225.0, bestWR = 5, bestWDate = "2026-01-01",
+            bestE1rm = 262.5, // 225 * (1 + 5/30)
+            bestE1rmW = 225.0, bestE1rmR = 5, bestE1rmDate = "2026-01-01",
+            totalSets = 10, totalSessions = 2
+        )
+        // targetReps = 5, targetWeight = 262.5 / (1 + 5/30) = 225.0
+        val hint = DataLogic.suggestSets(pr, EquipmentType.BARBELL, 5, WeightUnit.LBS, emptyList())
+        assertNotNull(hint)
+        assertEquals(225.0, hint!!.workingWeight, 0.001)
+        // Warmups according to logic for working > t3 (185lbs): 45x5, 50%x5, 70%x3, 85%x1
+        assertEquals(4, hint.warmupSets.size)
+        assertEquals(45.0, hint.warmupSets[0].first, 0.001)
+        assertEquals(190.0, hint.warmupSets[3].first, 0.001) // 85% of 225 = 191.25 -> 190.0
+    }
+
+    @Test
+    fun suggestSets_dumbbell_kg() {
+        val pr = DataLogic.PRRecord(
+            name = "DB Press",
+            bestW = 30.0, bestWR = 10, bestWDate = "2026-01-01",
+            bestE1rm = 40.0, // 30 * (1 + 10/30)
+            bestE1rmW = 30.0, bestE1rmR = 10, bestE1rmDate = "2026-01-01",
+            totalSets = 10, totalSessions = 2
+        )
+        // targetReps = 10, targetWeight = 40.0 / (1 + 10/30) = 30.0
+        val hint = DataLogic.suggestSets(pr, EquipmentType.DUMBBELL, 10, WeightUnit.KG, emptyList())
+        assertNotNull(hint)
+        assertEquals(30.0, hint!!.workingWeight, 0.001)
+        // DB warmup: 50% of 30.0 = 15.0 -> rounded to 2.0 increment = 16.0
+        assertEquals(1, hint.warmupSets.size)
+        assertEquals(16.0, hint.warmupSets[0].first, 0.001)
+    }
+
+    @Test
+    fun suggestSets_bodyweight_returnsNull() {
+        val pr = DataLogic.PRRecord(
+            name = "Pushup",
+            bestW = 0.0, bestWR = 50, bestWDate = "2026-01-01",
+            bestE1rm = 0.0, bestE1rmW = 0.0, bestE1rmR = 50, bestE1rmDate = "2026-01-01",
+            totalSets = 10, totalSessions = 2
+        )
+        val hint = DataLogic.suggestSets(pr, EquipmentType.BODYWEIGHT, 10, WeightUnit.LBS, emptyList())
+        assertNull(hint)
+    }
+
+    @Test
+    fun roundToIncrement_tests() {
+        assertEquals(100.0, DataLogic.roundToIncrement(101.0, 2.5), 0.001)
+        assertEquals(102.5, DataLogic.roundToIncrement(101.3, 2.5), 0.001)
+        assertEquals(105.0, DataLogic.roundToIncrement(104.0, 5.0), 0.001)
+        assertEquals(100.0, DataLogic.roundToIncrement(102.4, 5.0), 0.001)
+    }
 }

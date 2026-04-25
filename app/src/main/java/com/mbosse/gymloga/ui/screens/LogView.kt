@@ -40,10 +40,11 @@ import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.GymInput
 import com.mbosse.gymloga.ui.components.SetBadge
 import com.mbosse.gymloga.ui.theme.*
+import java.util.Locale
 import kotlin.math.floor
 
 private fun formatWeight(w: Double): String =
-    if (w == floor(w)) w.toLong().toString() else "%.1f".format(w)
+    if (w == floor(w)) w.toLong().toString() else String.format(Locale.US, "%.1f", w)
 
 @Composable
 fun LogView(viewModel: GymLogaViewModel) {

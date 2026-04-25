@@ -253,7 +253,7 @@ object DataLogic {
         return SetHint(workingWeight, warmups, lastSets)
     }
 
-    private fun roundToIncrement(value: Double, increment: Double): Double =
+    internal fun roundToIncrement(value: Double, increment: Double): Double =
         round(value / increment) * increment
 
     private fun generateBarbellWarmups(working: Double, unit: WeightUnit): List<Pair<Double, Int>> {

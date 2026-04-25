@@ -40,6 +40,7 @@ import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.theme.*
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Composable
 fun Header(sessionCount: Int) {
@@ -189,5 +190,5 @@ fun formatDate(iso: String): String {
 
 fun formatVolume(volume: Long, unit: WeightUnit): String {
     val label = unit.name.lowercase()
-    return if (volume >= 1000) "${"%.1f".format(volume / 1000.0)}k $label" else "$volume $label"
+    return if (volume >= 1000) "${String.format(Locale.US, "%.1f", volume / 1000.0)}k $label" else "$volume $label"
 }

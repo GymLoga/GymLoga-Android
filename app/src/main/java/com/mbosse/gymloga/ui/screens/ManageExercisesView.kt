@@ -61,7 +61,7 @@ fun ManageExercisesView(viewModel: GymLogaViewModel) {
         }
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(sorted) { def ->
+            items(sorted, key = { it.id }) { def ->
                 ExerciseRow(
                     def = def,
                     onEdit = {
