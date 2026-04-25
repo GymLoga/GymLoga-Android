@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mbosse.gymloga.data.WeightUnit
 import com.mbosse.gymloga.data.WorkoutSet
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.theme.*
@@ -186,5 +187,7 @@ fun formatDate(iso: String): String {
     }
 }
 
-fun formatVolume(lbs: Long): String =
-    if (lbs >= 1000) "${"%.1f".format(lbs / 1000.0)}k lbs" else "$lbs lbs"
+fun formatVolume(volume: Long, unit: WeightUnit): String {
+    val label = unit.name.lowercase()
+    return if (volume >= 1000) "${"%.1f".format(volume / 1000.0)}k $label" else "$volume $label"
+}

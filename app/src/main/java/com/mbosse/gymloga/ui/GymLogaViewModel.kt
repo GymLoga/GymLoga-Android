@@ -4,7 +4,6 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -19,12 +18,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
-import java.time.LocalDate
 
 sealed class ExportImportEvent {
     object ExportSuccess : ExportImportEvent()
     data class ExportFailure(val message: String) : ExportImportEvent()
-    data class ImportSuccess(val added: Int) : ExportImportEvent()
+    data class ImportSuccess(val addedSessions: Int, val addedDefs: Int) : ExportImportEvent()
     data class ImportFailure(val message: String) : ExportImportEvent()
 }
 
@@ -46,65 +44,148 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
         initialValue = emptyList()
     )
 
+    val prRecords: StateFlow<List<DataLogic.PRRecord>> = repository.prRecordsFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val weightUnit: StateFlow<WeightUnit> = repository.weightUnitFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = WeightUnit.LBS
+    )
+
+    val targetReps: StateFlow<Int?> = repository.targetRepsFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = 5
+    )
+
+    // Log form state — all mutable form fields live here
+    val logForm = LogFormState()
+
+    // Navigation state
     var currentView by mutableStateOf(GymView.LOG)
     var editSessionId by mutableStateOf<String?>(null)
-
-    // Log Form State
-    var aDate by mutableStateOf(LocalDate.now().toString())
-    var aLabel by mutableStateOf("")
-    var aNote by mutableStateOf("")
-    val aExercises = mutableStateListOf<Exercise>()
-
-    var curName by mutableStateOf("")
-    var curDefinitionId by mutableStateOf<String?>(null)
-    var curSet by mutableStateOf("")
-    var curExNote by mutableStateOf("")
-    var showNoteInput by mutableStateOf(false)
     var editDefinitionId by mutableStateOf<String?>(null)
-
-    val isDateValid: Boolean
-        get() = aDate.matches(Regex("""\d{4}-\d{2}-\d{2}""")) &&
-                runCatching { java.time.LocalDate.parse(aDate) }.isSuccess
-
-    // Detail States
     var selectedSession by mutableStateOf<Session?>(null)
     var selectedExerciseName by mutableStateOf<String?>(null)
     var exerciseHistorySource by mutableStateOf(GymView.HISTORY)
 
+    // Computed hint for the currently active exercise
+    var currentHint by mutableStateOf<DataLogic.SetHint?>(null)
+        private set
+
+    fun setWeightUnit(unit: WeightUnit) {
+        viewModelScope.launch { repository.saveWeightUnit(unit) }
+        currentHint = computeHint(logForm.curName, targetReps.value, unit)
+    }
+
+    fun setTargetReps(reps: Int?) {
+        viewModelScope.launch { repository.saveTargetReps(reps) }
+        currentHint = computeHint(logForm.curName, reps, weightUnit.value)
+    }
+
+    private fun computeHint(name: String, reps: Int?, unit: WeightUnit): DataLogic.SetHint? {
+        if (reps == null || name.isBlank()) return null
+        val pr = prRecords.value.find { it.name.lowercase() == name.lowercase() }
+        val def = exerciseDefinitions.value.find { it.name.lowercase() == name.lowercase() }
+        val lastSets = DataLogic.getExerciseHistory(sessions.value, name).firstOrNull()?.sets ?: emptyList()
+        return DataLogic.suggestSets(pr, def?.equipmentType, reps, unit, lastSets)
+    }
+
+    private fun refreshHint() {
+        currentHint = computeHint(logForm.curName, targetReps.value, weightUnit.value)
+    }
+
+    // Log form actions
+
     fun addSet() {
-        if (curName.isBlank() || curSet.isBlank()) return
-        val sets = DataLogic.parseSets(curSet)
+        val name = logForm.curName
+        val raw = logForm.curSet
+        if (name.isBlank() || raw.isBlank()) return
+        val sets = DataLogic.parseSets(raw)
         if (sets.isEmpty()) return
 
-        val existingIndex = aExercises.indexOfFirst { it.name.lowercase() == curName.trim().lowercase() }
+        val existingIndex = logForm.aExercises.indexOfFirst { it.name.lowercase() == name.trim().lowercase() }
         if (existingIndex >= 0) {
-            val ex = aExercises[existingIndex]
-            aExercises[existingIndex] = ex.copy(sets = ex.sets + sets)
+            val ex = logForm.aExercises[existingIndex]
+            logForm.aExercises[existingIndex] = ex.copy(sets = ex.sets + sets)
         } else {
-            aExercises.add(Exercise(name = curName.trim(), sets = sets, definitionId = curDefinitionId))
+            logForm.aExercises.add(Exercise(name = name.trim(), sets = sets, definitionId = logForm.curDefinitionId))
         }
-        curSet = ""
+        logForm.curSet = ""
     }
 
     fun selectExercise(name: String, definitionId: String? = null) {
         val trimmed = name.trim()
-        curName = trimmed
-        curDefinitionId = definitionId
-        curSet = ""
-        curExNote = ""
-        showNoteInput = false
-        if (aExercises.none { it.name.lowercase() == trimmed.lowercase() }) {
-            aExercises.add(Exercise(name = trimmed, sets = emptyList(), definitionId = definitionId))
+        logForm.curName = trimmed
+        logForm.curDefinitionId = definitionId
+        logForm.curSet = ""
+        logForm.curExNote = ""
+        logForm.showNoteInput = false
+        if (logForm.aExercises.none { it.name.lowercase() == trimmed.lowercase() }) {
+            logForm.aExercises.add(Exercise(name = trimmed, sets = emptyList(), definitionId = definitionId))
         }
+        refreshHint()
     }
 
     fun clearCurrentExercise() {
-        aExercises.removeAll { it.name.lowercase() == curName.lowercase() && it.sets.isEmpty() }
-        curName = ""
-        curDefinitionId = null
-        curSet = ""
-        curExNote = ""
-        showNoteInput = false
+        logForm.aExercises.removeAll { it.name.lowercase() == logForm.curName.lowercase() && it.sets.isEmpty() }
+        logForm.curName = ""
+        logForm.curDefinitionId = null
+        logForm.curSet = ""
+        logForm.curExNote = ""
+        logForm.showNoteInput = false
+        currentHint = null
+    }
+
+    fun addExNote() {
+        val name = logForm.curName
+        val note = logForm.curExNote
+        if (name.isBlank() || note.isBlank()) return
+        val existingIndex = logForm.aExercises.indexOfFirst { it.name.lowercase() == name.trim().lowercase() }
+        if (existingIndex >= 0) {
+            val oldNote = logForm.aExercises[existingIndex].note
+            val newNote = if (oldNote.isEmpty()) note.trim() else "$oldNote\n${note.trim()}"
+            logForm.aExercises[existingIndex] = logForm.aExercises[existingIndex].copy(note = newNote)
+        }
+        logForm.curExNote = ""
+        logForm.showNoteInput = false
+    }
+
+    fun removeLastSet(exerciseId: String) {
+        val index = logForm.aExercises.indexOfFirst { it.id == exerciseId }
+        if (index >= 0) {
+            val ex = logForm.aExercises[index]
+            if (ex.sets.size > 1) {
+                logForm.aExercises[index] = ex.copy(sets = ex.sets.dropLast(1))
+            } else {
+                logForm.aExercises.removeAt(index)
+            }
+        }
+    }
+
+    fun deleteExercise(exerciseId: String) {
+        logForm.aExercises.removeAll { it.id == exerciseId }
+    }
+
+    // Exercise definition actions
+
+    fun addExerciseDefinition(name: String, category: String, equipmentType: EquipmentType?) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        viewModelScope.launch {
+            val existing = exerciseDefinitions.value
+            if (existing.none { it.name.lowercase() == trimmed.lowercase() }) {
+                repository.saveExerciseDefinitions(
+                    existing + ExerciseDefinition(name = trimmed, category = category.trim(), equipmentType = equipmentType)
+                )
+            }
+            selectExercise(trimmed)
+            currentView = GymView.LOG
+        }
     }
 
     fun renameExercise(defId: String, oldName: String, newName: String) {
@@ -115,62 +196,23 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
         viewModelScope.launch { repository.setExerciseDefinitionActive(defId, active) }
     }
 
-    fun updateExerciseDefinition(defId: String, newName: String, newCategory: String) {
+    fun updateExerciseDefinition(defId: String, newName: String, newCategory: String, equipmentType: EquipmentType?) {
         val existing = exerciseDefinitions.value.find { it.id == defId } ?: return
         viewModelScope.launch {
-            repository.updateExerciseDefinition(defId, newName.trim(), newCategory.trim(), existing.name)
+            repository.updateExerciseDefinition(defId, newName.trim(), newCategory.trim(), existing.name, equipmentType)
         }
     }
 
-    fun addExNote() {
-        if (curName.isBlank() || curExNote.isBlank()) return
-        val existingIndex = aExercises.indexOfFirst { it.name.lowercase() == curName.trim().lowercase() }
-        if (existingIndex >= 0) {
-            val oldNote = aExercises[existingIndex].note
-            val newNote = if (oldNote.isEmpty()) curExNote.trim() else "$oldNote\n${curExNote.trim()}"
-            aExercises[existingIndex] = aExercises[existingIndex].copy(note = newNote)
-        }
-        curExNote = ""
-        showNoteInput = false
-    }
-
-    fun removeLastSet(exerciseId: String) {
-        val index = aExercises.indexOfFirst { it.id == exerciseId }
-        if (index >= 0) {
-            val ex = aExercises[index]
-            if (ex.sets.size > 1) {
-                aExercises[index] = ex.copy(sets = ex.sets.dropLast(1))
-            } else {
-                aExercises.removeAt(index)
-            }
-        }
-    }
-
-    fun deleteExercise(exerciseId: String) {
-        aExercises.removeAll { it.id == exerciseId }
-    }
-
-    fun addExerciseDefinition(name: String, category: String) {
-        val trimmed = name.trim()
-        if (trimmed.isBlank()) return
-        viewModelScope.launch {
-            val existing = exerciseDefinitions.value
-            if (existing.none { it.name.lowercase() == trimmed.lowercase() }) {
-                repository.saveExerciseDefinitions(existing + ExerciseDefinition(name = trimmed, category = category.trim()))
-            }
-            selectExercise(trimmed)
-            currentView = GymView.LOG
-        }
-    }
+    // Session actions
 
     fun saveSession() {
-        val validExercises = aExercises.filter { it.sets.isNotEmpty() }
+        val validExercises = logForm.aExercises.filter { it.sets.isNotEmpty() }
         if (validExercises.isEmpty()) return
         val session = Session(
             id = editSessionId ?: java.util.UUID.randomUUID().toString(),
-            date = aDate,
-            label = aLabel.trim(),
-            note = aNote.trim(),
+            date = logForm.aDate,
+            label = logForm.aLabel.trim(),
+            note = logForm.aNote.trim(),
             exercises = validExercises
         )
 
@@ -188,24 +230,13 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
     }
 
     fun clearLog() {
-        aDate = LocalDate.now().toString()
-        aLabel = ""
-        aNote = ""
-        aExercises.clear()
-        curName = ""
-        curDefinitionId = null
-        curSet = ""
-        curExNote = ""
+        logForm.clear()
         editSessionId = null
-        showNoteInput = false
+        currentHint = null
     }
 
     fun editSession(session: Session) {
-        aDate = session.date
-        aLabel = session.label
-        aNote = session.note
-        aExercises.clear()
-        aExercises.addAll(session.exercises)
+        logForm.load(session)
         editSessionId = session.id
         currentView = GymView.LOG
     }
@@ -216,6 +247,8 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
             currentView = GymView.HISTORY
         }
     }
+
+    // Import / Export
 
     fun exportToUri(uri: Uri, contentResolver: ContentResolver) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -237,10 +270,21 @@ class GymLogaViewModel(private val repository: SessionRepository) : ViewModel() 
                         _exportImportEvents.emit(ExportImportEvent.ImportFailure("Could not open file"))
                         return@launch
                     }
-                val existingIds = sessions.value.map { it.id }.toSet()
-                val newSessions = imported.filter { it.id !in existingIds }
+
+                val existingSessionIds = sessions.value.map { it.id }.toSet()
+                val newSessions = imported.sessions.filter { it.id !in existingSessionIds }
+
+                // Merge definitions: add imported ones not already present by ID,
+                // preserving local definitions (so local equipmentType edits survive)
+                val existingDefIds = exerciseDefinitions.value.map { it.id }.toSet()
+                val newDefs = imported.exerciseDefinitions.filter { it.id !in existingDefIds }
+
                 repository.saveSessions(sessions.value + newSessions)
-                _exportImportEvents.emit(ExportImportEvent.ImportSuccess(newSessions.size))
+                if (newDefs.isNotEmpty()) {
+                    repository.saveExerciseDefinitions(exerciseDefinitions.value + newDefs)
+                }
+
+                _exportImportEvents.emit(ExportImportEvent.ImportSuccess(newSessions.size, newDefs.size))
             } catch (e: SerializationException) {
                 Log.e("GymLogaViewModel", "Import failed", e)
                 _exportImportEvents.emit(ExportImportEvent.ImportFailure("Invalid file format"))
