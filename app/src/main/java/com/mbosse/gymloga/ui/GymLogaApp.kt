@@ -61,7 +61,7 @@ fun GymLogaApp(viewModel: GymLogaViewModel) {
                     when (viewModel.currentView) {
                         GymView.LOG -> LogView(viewModel)
                         GymView.HISTORY -> HistoryView(viewModel, sessions, snackbarHostState)
-                        GymView.PRS -> PRsView(viewModel, sessions)
+                        GymView.PRS -> PRsView(viewModel)
                         GymView.SESSION_DETAIL -> SessionDetailView(viewModel)
                         GymView.EXERCISE_HISTORY -> ExerciseHistoryView(viewModel, sessions)
                         GymView.ADD_EXERCISE -> AddExerciseView(viewModel)

@@ -18,6 +18,8 @@ package com.mbosse.gymloga.data
 
 import kotlinx.serialization.Serializable
 import java.util.UUID
+import kotlin.math.floor
+import kotlin.math.round
 
 @Serializable
 data class WorkoutSet(
@@ -45,11 +47,17 @@ data class Session(
 )
 
 @Serializable
+enum class EquipmentType { BARBELL, DUMBBELL, CABLE, BODYWEIGHT }
+
+enum class WeightUnit { LBS, KG }
+
+@Serializable
 data class ExerciseDefinition(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val category: String = "",
-    val active: Boolean = true
+    val active: Boolean = true,
+    val equipmentType: EquipmentType? = null
 )
 
 // Added versioning capability to support converting between schema versions
@@ -212,5 +220,69 @@ object DataLogic {
         }
 
         return map.values.filter { it.bestW > 0.0 }.sortedByDescending { it.bestE1rm }
+    }
+
+    data class SetHint(
+        val workingWeight: Double,
+        val warmupSets: List<Pair<Double, Int>>,
+        val lastSets: List<WorkoutSet>
+    )
+
+    fun suggestSets(
+        pr: PRRecord?,
+        equipmentType: EquipmentType?,
+        targetReps: Int,
+        unit: WeightUnit,
+        lastSets: List<WorkoutSet>
+    ): SetHint? {
+        if (pr == null || pr.bestE1rm <= 0.0) return null
+        if (equipmentType == EquipmentType.BODYWEIGHT) return null
+
+        val rawWorking = pr.bestE1rm / (1.0 + targetReps / 30.0)
+        val increment = when (equipmentType) {
+            EquipmentType.DUMBBELL, EquipmentType.CABLE -> if (unit == WeightUnit.KG) 2.0 else 5.0
+            else -> 2.5 // BARBELL or null — plate math
+        }
+        val workingWeight = roundToIncrement(rawWorking, increment)
+
+        val warmups = when (equipmentType) {
+            EquipmentType.DUMBBELL, EquipmentType.CABLE -> generateDbWarmup(workingWeight, increment)
+            else -> generateBarbellWarmups(workingWeight, unit)
+        }
+
+        return SetHint(workingWeight, warmups, lastSets)
+    }
+
+    private fun roundToIncrement(value: Double, increment: Double): Double =
+        round(value / increment) * increment
+
+    private fun generateBarbellWarmups(working: Double, unit: WeightUnit): List<Pair<Double, Int>> {
+        val bar = if (unit == WeightUnit.KG) 20.0 else 45.0
+        if (working <= bar) return emptyList()
+
+        val t1 = if (unit == WeightUnit.KG) 42.5 else 95.0
+        val t2 = if (unit == WeightUnit.KG) 60.0 else 135.0
+        val t3 = if (unit == WeightUnit.KG) 85.0 else 185.0
+
+        val warmups = mutableListOf(Pair(bar, 5))
+        when {
+            working <= t1 -> { /* bar only */ }
+            working <= t2 -> warmups.add(Pair(roundToIncrement(working * 0.7, 2.5), 3))
+            working <= t3 -> {
+                warmups.add(Pair(roundToIncrement(working * 0.5, 2.5), 5))
+                warmups.add(Pair(roundToIncrement(working * 0.75, 2.5), 3))
+            }
+            else -> {
+                warmups.add(Pair(roundToIncrement(working * 0.5, 2.5), 5))
+                warmups.add(Pair(roundToIncrement(working * 0.7, 2.5), 3))
+                warmups.add(Pair(roundToIncrement(working * 0.85, 2.5), 1))
+            }
+        }
+        return warmups
+    }
+
+    private fun generateDbWarmup(working: Double, increment: Double): List<Pair<Double, Int>> {
+        val feeler = roundToIncrement(working * 0.5, increment)
+        return if (feeler > 0 && feeler < working) listOf(Pair(feeler, 10)) else emptyList()
     }
 }
