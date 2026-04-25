@@ -36,6 +36,7 @@ import com.mbosse.gymloga.data.DataLogic
 import com.mbosse.gymloga.data.Session
 import com.mbosse.gymloga.ui.ExportImportEvent
 import com.mbosse.gymloga.ui.GymLogaViewModel
+import androidx.compose.runtime.collectAsState
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.formatDate
@@ -45,6 +46,7 @@ import com.mbosse.gymloga.ui.theme.*
 @Composable
 fun HistoryView(viewModel: GymLogaViewModel, sessions: List<Session>, snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
+    val weightUnit by viewModel.weightUnit.collectAsState()
     val allNames = remember(sessions) { DataLogic.getAllExerciseNames(sessions) }
     val sortedSessions = remember(sessions) { sessions.sortedByDescending { it.date } }
 
@@ -61,7 +63,8 @@ fun HistoryView(viewModel: GymLogaViewModel, sessions: List<Session>, snackbarHo
             val message = when (event) {
                 is ExportImportEvent.ExportSuccess -> "Exported successfully"
                 is ExportImportEvent.ExportFailure -> "Export failed: ${event.message}"
-                is ExportImportEvent.ImportSuccess -> "Imported ${event.added} new session(s)"
+                is ExportImportEvent.ImportSuccess -> "Imported ${event.addedSessions} session(s)" +
+                    if (event.addedDefs > 0) ", ${event.addedDefs} exercise definition(s)" else ""
                 is ExportImportEvent.ImportFailure -> "Import failed: ${event.message}"
             }
             snackbarHostState.showSnackbar(message)
@@ -151,7 +154,7 @@ fun HistoryView(viewModel: GymLogaViewModel, sessions: List<Session>, snackbarHo
                         Text(formatDate(session.date), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Accent))
                         val vol = DataLogic.getSessionVolume(session)
                         Text(
-                            "${session.exercises.size} ex" + if (vol > 0) " · ${formatVolume(vol)}" else "",
+                            "${session.exercises.size} ex" + if (vol > 0) " · ${formatVolume(vol, weightUnit)}" else "",
                             style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim)
                         )
                     }

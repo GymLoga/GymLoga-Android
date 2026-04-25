@@ -24,24 +24,33 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mbosse.gymloga.data.DataLogic
 import com.mbosse.gymloga.data.Exercise
 import com.mbosse.gymloga.data.ExerciseDefinition
+import com.mbosse.gymloga.data.WeightUnit
 import com.mbosse.gymloga.ui.GymLogaViewModel
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.FlowRow
 import com.mbosse.gymloga.ui.components.GymInput
 import com.mbosse.gymloga.ui.components.SetBadge
 import com.mbosse.gymloga.ui.theme.*
+import kotlin.math.floor
+
+private fun formatWeight(w: Double): String =
+    if (w == floor(w)) w.toLong().toString() else "%.1f".format(w)
 
 @Composable
 fun LogView(viewModel: GymLogaViewModel) {
     val scrollState = rememberScrollState()
     val exerciseDefinitions by viewModel.exerciseDefinitions.collectAsState()
+    val targetReps by viewModel.targetReps.collectAsState()
+    val weightUnit by viewModel.weightUnit.collectAsState()
     val focusManager = LocalFocusManager.current
 
     Column(
@@ -54,12 +63,12 @@ fun LogView(viewModel: GymLogaViewModel) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column {
                 GymInput(
-                    value = viewModel.aDate,
-                    onValueChange = { viewModel.aDate = it },
+                    value = viewModel.logForm.aDate,
+                    onValueChange = { viewModel.logForm.aDate = it },
                     placeholder = "YYYY-MM-DD",
                     modifier = Modifier.width(120.dp)
                 )
-                if (viewModel.aDate.isNotEmpty() && !viewModel.isDateValid) {
+                if (viewModel.logForm.aDate.isNotEmpty() && !viewModel.logForm.isDateValid) {
                     Text(
                         "Invalid date",
                         style = MaterialTheme.typography.labelSmall.copy(color = Red),
@@ -68,23 +77,51 @@ fun LogView(viewModel: GymLogaViewModel) {
                 }
             }
             GymInput(
-                value = viewModel.aLabel,
-                onValueChange = { viewModel.aLabel = it },
+                value = viewModel.logForm.aLabel,
+                onValueChange = { viewModel.logForm.aLabel = it },
                 placeholder = "Label (recovery, pull...)",
                 modifier = Modifier.weight(1f)
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
         GymInput(
-            value = viewModel.aNote,
-            onValueChange = { viewModel.aNote = it },
+            value = viewModel.logForm.aNote,
+            onValueChange = { viewModel.logForm.aNote = it },
             placeholder = "Session notes",
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Exercise picker — only for selecting/adding new exercises
+        // Rep target + unit preference row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(5 to "5s", 3 to "3s", 1 to "1s", null to "—").forEach { (reps, label) ->
+                    PreferenceChip(
+                        label = label,
+                        selected = targetReps == reps,
+                        onClick = { viewModel.setTargetReps(reps) }
+                    )
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf(WeightUnit.LBS to "lbs", WeightUnit.KG to "kg").forEach { (unit, label) ->
+                    PreferenceChip(
+                        label = label,
+                        selected = weightUnit == unit,
+                        onClick = { viewModel.setWeightUnit(unit) }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Exercise picker
         ExercisePicker(
             definitions = exerciseDefinitions,
             onSelect = { name, defId -> viewModel.selectExercise(name, defId) },
@@ -100,22 +137,24 @@ fun LogView(viewModel: GymLogaViewModel) {
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // Exercise cards — insertion order, edit controls inline on the active one
-        viewModel.aExercises.forEach { ex ->
-            val isActive = ex.name.lowercase() == viewModel.curName.lowercase()
+        // Exercise cards
+        viewModel.logForm.aExercises.forEach { ex ->
+            val isActive = ex.name.lowercase() == viewModel.logForm.curName.lowercase()
             ExerciseCard(
                 ex = ex,
                 isActive = isActive,
+                hint = if (isActive) viewModel.currentHint else null,
+                targetReps = targetReps,
                 onActivate = { viewModel.selectExercise(ex.name) },
                 onUndo = { viewModel.removeLastSet(ex.id) },
                 onDelete = { viewModel.deleteExercise(ex.id) },
-                curSet = viewModel.curSet,
-                onCurSetChange = { viewModel.curSet = it },
+                curSet = viewModel.logForm.curSet,
+                onCurSetChange = { viewModel.logForm.curSet = it },
                 onAddSet = { viewModel.addSet(); focusManager.clearFocus() },
-                showNoteInput = viewModel.showNoteInput,
-                onShowNote = { viewModel.showNoteInput = true },
-                curExNote = viewModel.curExNote,
-                onCurExNoteChange = { viewModel.curExNote = it },
+                showNoteInput = viewModel.logForm.showNoteInput,
+                onShowNote = { viewModel.logForm.showNoteInput = true },
+                curExNote = viewModel.logForm.curExNote,
+                onCurExNoteChange = { viewModel.logForm.curExNote = it },
                 onAddNote = { viewModel.addExNote() }
             )
         }
@@ -126,7 +165,7 @@ fun LogView(viewModel: GymLogaViewModel) {
             Button(
                 onClick = { viewModel.saveSession() },
                 modifier = Modifier.weight(1f),
-                enabled = viewModel.aExercises.any { it.sets.isNotEmpty() } && viewModel.isDateValid,
+                enabled = viewModel.logForm.aExercises.any { it.sets.isNotEmpty() } && viewModel.logForm.isDateValid,
                 colors = ButtonDefaults.buttonColors(containerColor = Accent, disabledContainerColor = TextDim.copy(alpha = 0.4f)),
                 shape = RoundedCornerShape(6.dp)
             ) {
@@ -148,9 +187,48 @@ fun LogView(viewModel: GymLogaViewModel) {
 }
 
 @Composable
+private fun PreferenceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(
+                if (selected) Accent.copy(alpha = 0.15f) else SurfaceHi,
+                RoundedCornerShape(4.dp)
+            )
+            .border(1.dp, if (selected) Accent else Border, RoundedCornerShape(4.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 5.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                color = if (selected) Accent else TextDim,
+                fontSize = 11.sp
+            )
+        )
+    }
+}
+
+@Composable
+private fun HintRow(label: String, value: String, valueColor: Color = TextDim) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall.copy(color = TextDim, fontSize = 10.sp),
+            modifier = Modifier.width(46.dp)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.labelSmall.copy(color = valueColor, fontSize = 10.sp)
+        )
+    }
+}
+
+@Composable
 private fun ExerciseCard(
     ex: Exercise,
     isActive: Boolean,
+    hint: DataLogic.SetHint?,
+    targetReps: Int?,
     onActivate: () -> Unit,
     onUndo: () -> Unit,
     onDelete: () -> Unit,
@@ -215,6 +293,37 @@ private fun ExerciseCard(
                 Spacer(modifier = Modifier.height(10.dp))
                 Divider(color = Border.copy(alpha = 0.4f))
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Hint panel
+                if (hint != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(SurfaceHi, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        if (hint.warmupSets.isNotEmpty()) {
+                            HintRow(
+                                label = "warmup",
+                                value = hint.warmupSets.joinToString(" · ") { "${formatWeight(it.first)}×${it.second}" }
+                            )
+                        }
+                        HintRow(
+                            label = "work",
+                            value = "${formatWeight(hint.workingWeight)}×${targetReps ?: ""}",
+                            valueColor = Blue
+                        )
+                        val lastWeighted = hint.lastSets.filter { it.w != null && it.r != null }
+                        if (lastWeighted.isNotEmpty()) {
+                            HintRow(
+                                label = "last",
+                                value = lastWeighted.joinToString(" · ") { "${formatWeight(it.w!!)}×${it.r}" }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     GymInput(

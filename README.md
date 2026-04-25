@@ -35,12 +35,6 @@ export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-
 
 The debug APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
 
-To run the unit tests, use:
-
-```bash
-./gradlew test
-```
-
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0) or later**. See the AGPL-3.0-or-later file for details. 

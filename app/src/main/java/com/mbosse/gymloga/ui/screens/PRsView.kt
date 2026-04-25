@@ -25,22 +25,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.mbosse.gymloga.data.DataLogic
-import com.mbosse.gymloga.data.Session
 import com.mbosse.gymloga.ui.GymLogaViewModel
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.formatDate
 import com.mbosse.gymloga.ui.theme.*
 
 @Composable
-fun PRsView(viewModel: GymLogaViewModel, sessions: List<Session>) {
-    val prs = DataLogic.getAllPRs(sessions)
+fun PRsView(viewModel: GymLogaViewModel) {
+    val prs by viewModel.prRecords.collectAsState()
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(vertical = 12.dp)) {
         item {

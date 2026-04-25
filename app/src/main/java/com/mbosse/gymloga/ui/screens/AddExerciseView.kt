@@ -16,13 +16,19 @@
 */
 package com.mbosse.gymloga.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.mbosse.gymloga.data.EquipmentType
 import com.mbosse.gymloga.ui.GymLogaViewModel
 import com.mbosse.gymloga.ui.GymView
 import com.mbosse.gymloga.ui.components.GymInput
@@ -38,6 +44,7 @@ fun AddExerciseView(viewModel: GymLogaViewModel) {
 
     var name by remember(defId) { mutableStateOf(existingDef?.name ?: "") }
     var category by remember(defId) { mutableStateOf(existingDef?.category ?: "") }
+    var equipmentType by remember(defId) { mutableStateOf(existingDef?.equipmentType) }
 
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         Row(
@@ -84,16 +91,25 @@ fun AddExerciseView(viewModel: GymLogaViewModel) {
             modifier = Modifier.fillMaxWidth()
         )
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            "Equipment type",
+            style = MaterialTheme.typography.labelSmall.copy(color = TextDim),
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        EquipmentPicker(selected = equipmentType, onSelect = { equipmentType = it })
+
         Spacer(modifier = Modifier.height(20.dp))
 
         Button(
             onClick = {
                 if (isEdit && defId != null) {
-                    viewModel.updateExerciseDefinition(defId, name, category)
+                    viewModel.updateExerciseDefinition(defId, name, category, equipmentType)
                     viewModel.editDefinitionId = null
                     viewModel.currentView = GymView.MANAGE_EXERCISES
                 } else {
-                    viewModel.addExerciseDefinition(name, category)
+                    viewModel.addExerciseDefinition(name, category, equipmentType)
                 }
             },
             modifier = Modifier.fillMaxWidth(),
@@ -105,6 +121,45 @@ fun AddExerciseView(viewModel: GymLogaViewModel) {
             shape = RoundedCornerShape(6.dp)
         ) {
             Text("SAVE", style = MaterialTheme.typography.labelSmall.copy(color = Bg, fontWeight = FontWeight.ExtraBold))
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EquipmentPicker(selected: EquipmentType?, onSelect: (EquipmentType?) -> Unit) {
+    val options = listOf(
+        null to "—",
+        EquipmentType.BARBELL to "Barbell",
+        EquipmentType.DUMBBELL to "Dumbbell",
+        EquipmentType.CABLE to "Cable",
+        EquipmentType.BODYWEIGHT to "Bodyweight"
+    )
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        options.forEach { (type, label) ->
+            val isSelected = selected == type
+            Box(
+                modifier = Modifier
+                    .background(
+                        if (isSelected) Accent.copy(alpha = 0.15f) else SurfaceHi,
+                        RoundedCornerShape(6.dp)
+                    )
+                    .border(1.dp, if (isSelected) Accent else Border, RoundedCornerShape(6.dp))
+                    .clickable { onSelect(type) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 12.sp,
+                        color = if (isSelected) Accent else TextDim
+                    )
+                )
+            }
         }
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
 import com.mbosse.gymloga.data.DataLogic
 import com.mbosse.gymloga.ui.GymLogaViewModel
 import com.mbosse.gymloga.ui.GymView
@@ -39,6 +40,7 @@ import com.mbosse.gymloga.ui.theme.*
 @Composable
 fun SessionDetailView(viewModel: GymLogaViewModel) {
     val session = viewModel.selectedSession ?: return
+    val weightUnit by viewModel.weightUnit.collectAsState()
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     if (showDeleteConfirm) {
@@ -77,7 +79,7 @@ fun SessionDetailView(viewModel: GymLogaViewModel) {
                 }
                 val vol = DataLogic.getSessionVolume(session)
                 if (vol > 0) {
-                    Text(formatVolume(vol) + " total volume", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
+                    Text(formatVolume(vol, weightUnit) + " total volume", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -35,13 +35,17 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "gy
 
 class SessionRepository(private val context: Context) {
     private val SESSIONS_KEY = stringPreferencesKey("gymloga:sessions")
+    private val WEIGHT_UNIT_KEY = stringPreferencesKey("gymloga:weight_unit")
+    private val TARGET_REPS_KEY = stringPreferencesKey("gymloga:target_reps")
 
-    private fun parseData(json: String): GymLogaData {
-        val element = Json.parseToJsonElement(json)
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private fun parseData(rawJson: String): GymLogaData {
+        val element = json.parseToJsonElement(rawJson)
         val data = if (element is JsonArray) {
-            GymLogaData(sessions = Json.decodeFromJsonElement(element))
+            GymLogaData(sessions = json.decodeFromJsonElement(element))
         } else {
-            Json.decodeFromJsonElement(element)
+            json.decodeFromJsonElement(element)
         }
         return when {
             data.exerciseDefinitions.isNotEmpty() -> data
@@ -51,18 +55,23 @@ class SessionRepository(private val context: Context) {
                 data.copy(exerciseDefinitions = seeded)
             }
             else -> {
-                // Fresh install: provide a starter set
-                val defaults = listOf("Bench Press", "Overhead Press", "Power Clean", "Deadlift", "Back Squat")
-                    .map { ExerciseDefinition(name = it) }
+                // Fresh install: provide a starter set with known equipment types
+                val defaults = listOf(
+                    ExerciseDefinition(name = "Bench Press", equipmentType = EquipmentType.BARBELL),
+                    ExerciseDefinition(name = "Overhead Press", equipmentType = EquipmentType.BARBELL),
+                    ExerciseDefinition(name = "Power Clean", equipmentType = EquipmentType.BARBELL),
+                    ExerciseDefinition(name = "Deadlift", equipmentType = EquipmentType.BARBELL),
+                    ExerciseDefinition(name = "Back Squat", equipmentType = EquipmentType.BARBELL)
+                )
                 data.copy(exerciseDefinitions = defaults)
             }
         }
     }
 
     private val dataFlow: Flow<GymLogaData> = context.dataStore.data.map { preferences ->
-        val json = preferences[SESSIONS_KEY] ?: "[]"
+        val rawJson = preferences[SESSIONS_KEY] ?: "[]"
         try {
-            parseData(json)
+            parseData(rawJson)
         } catch (e: SerializationException) {
             android.util.Log.e("SessionRepository", "Failed to deserialize data", e)
             GymLogaData(sessions = emptyList())
@@ -73,6 +82,31 @@ class SessionRepository(private val context: Context) {
 
     val exerciseDefinitionsFlow: Flow<List<ExerciseDefinition>> = dataFlow.map { it.exerciseDefinitions }
 
+    val prRecordsFlow: Flow<List<DataLogic.PRRecord>> = sessionsFlow.map { DataLogic.getAllPRs(it) }
+
+    val weightUnitFlow: Flow<WeightUnit> = context.dataStore.data.map { prefs ->
+        when (prefs[WEIGHT_UNIT_KEY]) {
+            "KG" -> WeightUnit.KG
+            else -> WeightUnit.LBS
+        }
+    }
+
+    val targetRepsFlow: Flow<Int?> = context.dataStore.data.map { prefs ->
+        when (val stored = prefs[TARGET_REPS_KEY]) {
+            null -> 5       // first launch default
+            "off" -> null   // user explicitly disabled hints
+            else -> stored.toIntOrNull()
+        }
+    }
+
+    suspend fun saveWeightUnit(unit: WeightUnit) {
+        context.dataStore.edit { it[WEIGHT_UNIT_KEY] = unit.name }
+    }
+
+    suspend fun saveTargetReps(reps: Int?) {
+        context.dataStore.edit { it[TARGET_REPS_KEY] = reps?.toString() ?: "off" }
+    }
+
     suspend fun saveSessions(sessions: List<Session>) {
         context.dataStore.edit { preferences ->
             val current = try {
@@ -81,8 +115,7 @@ class SessionRepository(private val context: Context) {
             } catch (e: Exception) {
                 GymLogaData(sessions = emptyList())
             }
-            val data = current.copy(sessions = sessions)
-            preferences[SESSIONS_KEY] = Json.encodeToString(data)
+            preferences[SESSIONS_KEY] = Json.encodeToString(current.copy(sessions = sessions))
         }
     }
 
@@ -94,8 +127,7 @@ class SessionRepository(private val context: Context) {
             } catch (e: Exception) {
                 GymLogaData(sessions = emptyList())
             }
-            val data = current.copy(exerciseDefinitions = defs)
-            preferences[SESSIONS_KEY] = Json.encodeToString(data)
+            preferences[SESSIONS_KEY] = Json.encodeToString(current.copy(exerciseDefinitions = defs))
         }
     }
 
@@ -114,7 +146,13 @@ class SessionRepository(private val context: Context) {
         }
     }
 
-    suspend fun updateExerciseDefinition(defId: String, newName: String, newCategory: String, oldName: String) {
+    suspend fun updateExerciseDefinition(
+        defId: String,
+        newName: String,
+        newCategory: String,
+        oldName: String,
+        equipmentType: EquipmentType?
+    ) {
         context.dataStore.edit { preferences ->
             val current = try {
                 preferences[SESSIONS_KEY]?.let { parseData(it) } ?: GymLogaData(sessions = emptyList())
@@ -123,7 +161,7 @@ class SessionRepository(private val context: Context) {
             }
             val nameChanged = newName != oldName
             val updatedDefs = current.exerciseDefinitions.map {
-                if (it.id == defId) it.copy(name = newName, category = newCategory) else it
+                if (it.id == defId) it.copy(name = newName, category = newCategory, equipmentType = equipmentType) else it
             }
             val updatedSessions = if (nameChanged)
                 DataLogic.applyRename(current.sessions, defId, oldName, newName)
@@ -149,17 +187,17 @@ class SessionRepository(private val context: Context) {
 
     suspend fun exportToStream(outputStream: OutputStream) {
         val data = dataFlow.first()
-        val prettyJson = kotlinx.serialization.json.Json { prettyPrint = true }
+        val prettyJson = Json { prettyPrint = true }
         outputStream.bufferedWriter().use { it.write(prettyJson.encodeToString(data)) }
     }
 
-    fun importFromStream(inputStream: InputStream): List<Session> {
+    fun importFromStream(inputStream: InputStream): GymLogaData {
         val text = inputStream.bufferedReader().use { it.readText() }
-        val element = Json.parseToJsonElement(text)
+        val element = json.parseToJsonElement(text)
         return if (element is JsonArray) {
-            Json.decodeFromJsonElement(element)
+            GymLogaData(sessions = json.decodeFromJsonElement(element))
         } else {
-            Json.decodeFromJsonElement<GymLogaData>(element).sessions
+            json.decodeFromJsonElement(element)
         }
     }
 }
