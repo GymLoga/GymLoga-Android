@@ -59,18 +59,51 @@ fun ExerciseHistoryView(viewModel: GymLogaViewModel, sessions: List<Session>) {
         if (history.isEmpty()) {
             Text("No data.", style = MaterialTheme.typography.bodyLarge.copy(color = TextDim), modifier = Modifier.padding(top = 8.dp))
         } else {
-            val bestEntry = history.maxByOrNull { it.bestW }
-            if (bestEntry != null && bestEntry.bestW > 0) {
+            val bestWEntry = history.maxByOrNull { it.bestW }
+            val bestTEntry = history.maxByOrNull { it.bestT }
+            val bestBWREntry = history.maxByOrNull { it.bestBWR }
+
+            if (bestWEntry != null && bestWEntry.bestW > 0) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 12.dp)
+                        .padding(vertical = 6.dp)
                         .background(Surface, RoundedCornerShape(6.dp))
                         .border(1.dp, Green.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                         .padding(10.dp, 8.dp)
                 ) {
                     Text(
-                        "BEST: ${bestEntry.bestW}×${bestEntry.bestR} · est 1RM: ${kotlin.math.round(bestEntry.bestW * (1 + bestEntry.bestR.toDouble() / 30)).toLong()}",
+                        "BEST: ${bestWEntry.bestW}×${bestWEntry.bestR} · est 1RM: ${kotlin.math.round(bestWEntry.bestW * (1 + bestWEntry.bestR.toDouble() / 30)).toLong()}",
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Green, fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+            if (bestTEntry != null && bestTEntry.bestT > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .background(Surface, RoundedCornerShape(6.dp))
+                        .border(1.dp, Green.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                        .padding(10.dp, 8.dp)
+                ) {
+                    Text(
+                        "LONGEST HOLD: ${DataLogic.formatDuration(bestTEntry.bestT)}",
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Green, fontWeight = FontWeight.Bold)
+                    )
+                }
+            }
+            if (bestBWREntry != null && bestBWREntry.bestBWR > 0) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp)
+                        .background(Surface, RoundedCornerShape(6.dp))
+                        .border(1.dp, Green.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                        .padding(10.dp, 8.dp)
+                ) {
+                    Text(
+                        "MOST REPS: ${bestBWREntry.bestBWR}",
                         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Green, fontWeight = FontWeight.Bold)
                     )
                 }

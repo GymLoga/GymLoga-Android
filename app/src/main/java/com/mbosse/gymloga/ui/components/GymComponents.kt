@@ -129,30 +129,48 @@ fun GymInput(
 
 @Composable
 fun SetBadge(set: WorkoutSet) {
-    if (set.note != null && set.w == null && set.r == null) {
-        Box(
-            modifier = Modifier
-                .padding(2.dp)
-                .background(SurfaceHi, RoundedCornerShape(4.dp))
-                .border(1.dp, Border, RoundedCornerShape(4.dp))
-                .padding(vertical = 3.dp, horizontal = 8.dp)
-        ) {
-            Text(set.note, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
-        }
-    } else {
-        Box(
-            modifier = Modifier
-                .padding(2.dp)
-                .background(SurfaceHi, RoundedCornerShape(4.dp))
-                .border(1.dp, Border, RoundedCornerShape(4.dp))
-                .padding(vertical = 3.dp, horizontal = 8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${set.w}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold))
-                Text("×", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
-                Text("${set.r}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold))
-                if (set.note != null) {
-                    Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
+    val isFreeformNote = set.note != null && set.w == null && set.r == null && set.t == null
+    Box(
+        modifier = Modifier
+            .padding(2.dp)
+            .background(SurfaceHi, RoundedCornerShape(4.dp))
+            .border(1.dp, Border, RoundedCornerShape(4.dp))
+            .padding(vertical = 3.dp, horizontal = 8.dp)
+    ) {
+        when {
+            isFreeformNote -> {
+                Text(set.note!!, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+            }
+            set.t != null -> {
+                // Timed set (e.g. plank hold): show duration, no weight/reps
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        com.mbosse.gymloga.data.DataLogic.formatDuration(set.t),
+                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold)
+                    )
+                    if (set.note != null) {
+                        Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
+                    }
+                }
+            }
+            set.w == null && set.r != null -> {
+                // Weightless (bodyweight) set: reps only, no weight number
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${set.r}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold))
+                    Text(" reps", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+                    if (set.note != null) {
+                        Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
+                    }
+                }
+            }
+            else -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${set.w}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold))
+                    Text("×", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+                    Text("${set.r}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold))
+                    if (set.note != null) {
+                        Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
+                    }
                 }
             }
         }
@@ -186,5 +204,5 @@ fun formatDate(iso: String): String {
     }
 }
 
-fun formatVolume(lbs: Long): String =
-    if (lbs >= 1000) "${"%.1f".format(lbs / 1000.0)}k lbs" else "$lbs lbs"
+fun formatVolume(kg: Long): String =
+    if (kg >= 1000) "${"%.1f".format(kg / 1000.0)}k kg" else "$kg kg"

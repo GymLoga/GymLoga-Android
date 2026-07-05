@@ -86,21 +86,43 @@ fun PRsView(viewModel: GymLogaViewModel, sessions: List<Session>) {
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(modifier = Modifier.width(100.dp)) {
-                            Text("HEAVIEST", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
-                            Row(verticalAlignment = Alignment.Bottom) {
-                                Text("${pr.bestW}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent))
-                                Text("×${pr.bestWR}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+                        if (pr.bestW > 0.0) {
+                            Column(modifier = Modifier.width(100.dp)) {
+                                Text("HEAVIEST", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                                Row(verticalAlignment = Alignment.Bottom) {
+                                    Text("${pr.bestW}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent))
+                                    Text("×${pr.bestWR}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+                                }
+                                Text(formatDate(pr.bestWDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
                             }
-                            Text(formatDate(pr.bestWDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
+                            Column(modifier = Modifier.width(100.dp)) {
+                                Text("EST 1RM", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                                Text("${kotlin.math.round(pr.bestE1rm).toLong()}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Green))
+                                Text(
+                                    "${pr.bestE1rmW}×${pr.bestE1rmR} · ${formatDate(pr.bestE1rmDate)}",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim)
+                                )
+                            }
                         }
-                        Column(modifier = Modifier.width(100.dp)) {
-                            Text("EST 1RM", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
-                            Text("${kotlin.math.round(pr.bestE1rm).toLong()}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Green))
-                            Text(
-                                "${pr.bestE1rmW}×${pr.bestE1rmR} · ${formatDate(pr.bestE1rmDate)}",
-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim)
-                            )
+                        if (pr.bestT > 0L) {
+                            Column(modifier = Modifier.width(100.dp)) {
+                                Text("LONGEST HOLD", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                                Text(
+                                    DataLogic.formatDuration(pr.bestT),
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent)
+                                )
+                                Text(formatDate(pr.bestTDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
+                            }
+                        }
+                        if (pr.bestBWR > 0) {
+                            Column(modifier = Modifier.width(100.dp)) {
+                                Text("MOST REPS", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                                Text(
+                                    "${pr.bestBWR}",
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent)
+                                )
+                                Text(formatDate(pr.bestBWRDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
+                            }
                         }
                     }
                 }

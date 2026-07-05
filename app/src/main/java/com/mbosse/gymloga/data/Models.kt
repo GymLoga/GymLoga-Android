@@ -23,6 +23,7 @@ import java.util.UUID
 data class WorkoutSet(
     val w: Double? = null,
     val r: Int? = null,
+    val t: Long? = null, // duration in seconds, for timed sets (planks, holds, carries...)
     val note: String? = null
 )
 
@@ -61,6 +62,36 @@ data class GymLogaData(
 )
 
 object DataLogic {
+
+    // Matches pure duration shorthand: 30m, 2h, 20s, 1h20m, 1h20m30s...
+    private val DURATION_RE = Regex(
+        """^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Parses a pure duration token (e.g. "1h20m") into total seconds, or null if not a duration. */
+    fun parseDurationSeconds(token: String): Long? {
+        val m = DURATION_RE.find(token) ?: return null
+        val hStr = m.groupValues[1]; val mStr = m.groupValues[2]; val sStr = m.groupValues[3]
+        if (hStr.isEmpty() && mStr.isEmpty() && sStr.isEmpty()) return null // must have at least one unit
+        val h = hStr.toLongOrNull() ?: 0L
+        val mi = mStr.toLongOrNull() ?: 0L
+        val s = sStr.toLongOrNull() ?: 0L
+        return h * 3600 + mi * 60 + s
+    }
+
+    /** Formats a duration in seconds back into compact shorthand, e.g. 4820 -> "1h20m20s". */
+    fun formatDuration(totalSeconds: Long): String {
+        val h = totalSeconds / 3600
+        val m = (totalSeconds % 3600) / 60
+        val s = totalSeconds % 60
+        val sb = StringBuilder()
+        if (h > 0) sb.append("${h}h")
+        if (m > 0) sb.append("${m}m")
+        if (s > 0 || sb.isEmpty()) sb.append("${s}s")
+        return sb.toString()
+    }
+
     fun parseSets(raw: String): List<WorkoutSet> {
         val t = raw.trim()
         if (t.isEmpty()) return emptyList()
@@ -80,6 +111,35 @@ object DataLogic {
             val w = wxr.groupValues[1].toDoubleOrNull() ?: 0.0
             val r = wxr.groupValues[2].toIntOrNull() ?: 0
             return listOf(WorkoutSet(w = w, r = r))
+        }
+
+        // Weightless (bodyweight) shorthand: x10x3 -> reps x sets, no weight
+        val xrxs = Regex("""^x\s*(\d+)\s*x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
+        if (xrxs != null) {
+            val r = xrxs.groupValues[1].toIntOrNull() ?: 0
+            val s = xrxs.groupValues[2].toIntOrNull() ?: 0
+            return List(s) { WorkoutSet(r = r) }
+        }
+
+        // Weightless (bodyweight) shorthand: x10 -> one set of reps, no weight
+        val xr = Regex("""^x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
+        if (xr != null) {
+            val r = xr.groupValues[1].toIntOrNull() ?: 0
+            return listOf(WorkoutSet(r = r))
+        }
+
+        // Timed set, optionally repeated across sets: 30s, 2h, 1h20m, 30sx3
+        val durXs = Regex("""^([0-9hms]+)\s*x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
+        if (durXs != null) {
+            val secs = parseDurationSeconds(durXs.groupValues[1])
+            val s = durXs.groupValues[2].toIntOrNull() ?: 0
+            if (secs != null && secs > 0) {
+                return List(s) { WorkoutSet(t = secs) }
+            }
+        }
+        val durOnly = parseDurationSeconds(t)
+        if (durOnly != null && durOnly > 0) {
+            return listOf(WorkoutSet(t = durOnly))
         }
 
         // Regex: 135 (bare weight, assume 1 rep)
@@ -126,6 +186,8 @@ object DataLogic {
         val sets: List<WorkoutSet>,
         val bestW: Double,
         val bestR: Int,
+        val bestT: Long,
+        val bestBWR: Int,
         val note: String
     )
 
@@ -134,12 +196,16 @@ object DataLogic {
         return sessions.flatMap { sess ->
             sess.exercises.filter { it.name.lowercase() == lower }.map { ex ->
                 val bestSet = ex.sets.filter { it.w != null }.maxByOrNull { it.w!! }
+                val bestTimedSet = ex.sets.filter { it.t != null }.maxByOrNull { it.t!! }
+                val bestBWSet = ex.sets.filter { it.w == null && it.t == null && it.r != null }.maxByOrNull { it.r!! }
                 ExerciseHistoryEntry(
                     date = sess.date,
                     label = sess.label,
                     sets = ex.sets,
                     bestW = bestSet?.w ?: 0.0,
                     bestR = bestSet?.r ?: 0,
+                    bestT = bestTimedSet?.t ?: 0L,
+                    bestBWR = bestBWSet?.r ?: 0,
                     note = ex.note
                 )
             }
@@ -155,6 +221,10 @@ object DataLogic {
         val bestE1rmW: Double,
         val bestE1rmR: Int,
         val bestE1rmDate: String,
+        val bestT: Long,
+        val bestTDate: String,
+        val bestBWR: Int,
+        val bestBWRDate: String,
         val totalSets: Int,
         val totalSessions: Int
     )
@@ -168,6 +238,7 @@ object DataLogic {
                 val current = map[lower] ?: PRRecord(
                     name = ex.name, bestW = 0.0, bestWR = 0, bestWDate = "",
                     bestE1rm = 0.0, bestE1rmW = 0.0, bestE1rmR = 0, bestE1rmDate = "",
+                    bestT = 0L, bestTDate = "", bestBWR = 0, bestBWRDate = "",
                     totalSets = 0, totalSessions = 0
                 )
 
@@ -178,12 +249,18 @@ object DataLogic {
                 var newBestE1rmW = current.bestE1rmW
                 var newBestE1rmR = current.bestE1rmR
                 var newBestE1rmDate = current.bestE1rmDate
+                var newBestT = current.bestT
+                var newBestTDate = current.bestTDate
+                var newBestBWR = current.bestBWR
+                var newBestBWRDate = current.bestBWRDate
                 var sessionSetCount = 0
 
                 for (s in ex.sets) {
                     sessionSetCount++
                     val w = s.w ?: 0.0
                     val r = s.r ?: 0
+                    val dur = s.t ?: 0L
+
                     if (w > 0.0 && r > 0) {
                         if (w > newBestW) {
                             newBestW = w
@@ -198,6 +275,18 @@ object DataLogic {
                             newBestE1rmR = r
                             newBestE1rmDate = sess.date
                         }
+                    } else if (dur > 0L) {
+                        // Timed set (e.g. plank hold, farmer's carry) — PR is the longest duration
+                        if (dur > newBestT) {
+                            newBestT = dur
+                            newBestTDate = sess.date
+                        }
+                    } else if (w == 0.0 && r > 0 && s.w == null) {
+                        // Bodyweight reps, no weight logged — PR is the most reps
+                        if (r > newBestBWR) {
+                            newBestBWR = r
+                            newBestBWRDate = sess.date
+                        }
                     }
                 }
 
@@ -205,12 +294,16 @@ object DataLogic {
                     bestW = newBestW, bestWR = newBestWR, bestWDate = newBestWDate,
                     bestE1rm = newBestE1rm, bestE1rmW = newBestE1rmW, bestE1rmR = newBestE1rmR,
                     bestE1rmDate = newBestE1rmDate,
+                    bestT = newBestT, bestTDate = newBestTDate,
+                    bestBWR = newBestBWR, bestBWRDate = newBestBWRDate,
                     totalSets = current.totalSets + sessionSetCount,
                     totalSessions = current.totalSessions + 1
                 )
             }
         }
 
-        return map.values.filter { it.bestW > 0.0 }.sortedByDescending { it.bestE1rm }
+        return map.values
+            .filter { it.bestW > 0.0 || it.bestT > 0L || it.bestBWR > 0 }
+            .sortedByDescending { if (it.bestE1rm > 0.0) it.bestE1rm else if (it.bestT > 0L) it.bestT.toDouble() else it.bestBWR.toDouble() }
     }
 }

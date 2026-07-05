@@ -12,6 +12,14 @@ I built this app because I wanted a tracking tool that stayed out of my way, som
 - **Privacy First**: No tracking, no ads, and no cloud syncing. Your data never leaves your device.
 - **Modern Native Feel**: Built with Kotlin and Jetpack Compose for a fast, responsive Android experience.
 
+### Changes from [GymLoga/GymLoga-Android](https://github.com/GymLoga/GymLoga-Android):
+- **Added shorthand for**:
+  - body weight entries x(reps)x(sets): `x10x3`
+  - timed entries: `10m` or `1h20m`
+- **Metric units**: Uses metric units instead of imperial.
+
+**Disclaimer:** I know nothing of Kotlin. All changes were made with Claude. 
+
 ## Roadmap
 - **Initial Release**
 - **Version 1.1**
@@ -34,6 +42,9 @@ export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-
 ```
 
 The debug APK will be generated at `app/build/outputs/apk/debug/app-debug.apk`.
+
+### Download Link
+[Download APK here.](https://github.com/pescepalla/GymLoga-Android/actions/runs/28680113018/artifacts/8073755122).
 
 ## License
 

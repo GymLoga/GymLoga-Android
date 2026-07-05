@@ -1,0 +1,545 @@
+diff --git a/app/src/main/java/com/mbosse/gymloga/data/Models.kt b/app/src/main/java/com/mbosse/gymloga/data/Models.kt
+index ce7f1f0..201fc85 100644
+--- a/app/src/main/java/com/mbosse/gymloga/data/Models.kt
++++ b/app/src/main/java/com/mbosse/gymloga/data/Models.kt
+@@ -23,6 +23,7 @@ import java.util.UUID
+ data class WorkoutSet(
+     val w: Double? = null,
+     val r: Int? = null,
++    val t: Long? = null, // duration in seconds, for timed sets (planks, holds, carries...)
+     val note: String? = null
+ )
+ 
+@@ -61,6 +62,36 @@ data class GymLogaData(
+ )
+ 
+ object DataLogic {
++
++    // Matches pure duration shorthand: 30m, 2h, 20s, 1h20m, 1h20m30s...
++    private val DURATION_RE = Regex(
++        """^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$""",
++        RegexOption.IGNORE_CASE
++    )
++
++    /** Parses a pure duration token (e.g. "1h20m") into total seconds, or null if not a duration. */
++    fun parseDurationSeconds(token: String): Long? {
++        val m = DURATION_RE.find(token) ?: return null
++        val hStr = m.groupValues[1]; val mStr = m.groupValues[2]; val sStr = m.groupValues[3]
++        if (hStr.isEmpty() && mStr.isEmpty() && sStr.isEmpty()) return null // must have at least one unit
++        val h = hStr.toLongOrNull() ?: 0L
++        val mi = mStr.toLongOrNull() ?: 0L
++        val s = sStr.toLongOrNull() ?: 0L
++        return h * 3600 + mi * 60 + s
++    }
++
++    /** Formats a duration in seconds back into compact shorthand, e.g. 4820 -> "1h20m20s". */
++    fun formatDuration(totalSeconds: Long): String {
++        val h = totalSeconds / 3600
++        val m = (totalSeconds % 3600) / 60
++        val s = totalSeconds % 60
++        val sb = StringBuilder()
++        if (h > 0) sb.append("${h}h")
++        if (m > 0) sb.append("${m}m")
++        if (s > 0 || sb.isEmpty()) sb.append("${s}s")
++        return sb.toString()
++    }
++
+     fun parseSets(raw: String): List<WorkoutSet> {
+         val t = raw.trim()
+         if (t.isEmpty()) return emptyList()
+@@ -82,6 +113,35 @@ object DataLogic {
+             return listOf(WorkoutSet(w = w, r = r))
+         }
+ 
++        // Weightless (bodyweight) shorthand: x10x3 -> reps x sets, no weight
++        val xrxs = Regex("""^x\s*(\d+)\s*x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
++        if (xrxs != null) {
++            val r = xrxs.groupValues[1].toIntOrNull() ?: 0
++            val s = xrxs.groupValues[2].toIntOrNull() ?: 0
++            return List(s) { WorkoutSet(r = r) }
++        }
++
++        // Weightless (bodyweight) shorthand: x10 -> one set of reps, no weight
++        val xr = Regex("""^x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
++        if (xr != null) {
++            val r = xr.groupValues[1].toIntOrNull() ?: 0
++            return listOf(WorkoutSet(r = r))
++        }
++
++        // Timed set, optionally repeated across sets: 30s, 2h, 1h20m, 30sx3
++        val durXs = Regex("""^([0-9hms]+)\s*x\s*(\d+)$""", RegexOption.IGNORE_CASE).find(t)
++        if (durXs != null) {
++            val secs = parseDurationSeconds(durXs.groupValues[1])
++            val s = durXs.groupValues[2].toIntOrNull() ?: 0
++            if (secs != null && secs > 0) {
++                return List(s) { WorkoutSet(t = secs) }
++            }
++        }
++        val durOnly = parseDurationSeconds(t)
++        if (durOnly != null && durOnly > 0) {
++            return listOf(WorkoutSet(t = durOnly))
++        }
++
+         // Regex: 135 (bare weight, assume 1 rep)
+         val wOnly = Regex("""^(\d+(?:\.\d+)?)$""").find(t)
+         if (wOnly != null) {
+@@ -126,6 +186,8 @@ object DataLogic {
+         val sets: List<WorkoutSet>,
+         val bestW: Double,
+         val bestR: Int,
++        val bestT: Long,
++        val bestBWR: Int,
+         val note: String
+     )
+ 
+@@ -134,12 +196,16 @@ object DataLogic {
+         return sessions.flatMap { sess ->
+             sess.exercises.filter { it.name.lowercase() == lower }.map { ex ->
+                 val bestSet = ex.sets.filter { it.w != null }.maxByOrNull { it.w!! }
++                val bestTimedSet = ex.sets.filter { it.t != null }.maxByOrNull { it.t!! }
++                val bestBWSet = ex.sets.filter { it.w == null && it.t == null && it.r != null }.maxByOrNull { it.r!! }
+                 ExerciseHistoryEntry(
+                     date = sess.date,
+                     label = sess.label,
+                     sets = ex.sets,
+                     bestW = bestSet?.w ?: 0.0,
+                     bestR = bestSet?.r ?: 0,
++                    bestT = bestTimedSet?.t ?: 0L,
++                    bestBWR = bestBWSet?.r ?: 0,
+                     note = ex.note
+                 )
+             }
+@@ -155,6 +221,10 @@ object DataLogic {
+         val bestE1rmW: Double,
+         val bestE1rmR: Int,
+         val bestE1rmDate: String,
++        val bestT: Long,
++        val bestTDate: String,
++        val bestBWR: Int,
++        val bestBWRDate: String,
+         val totalSets: Int,
+         val totalSessions: Int
+     )
+@@ -168,6 +238,7 @@ object DataLogic {
+                 val current = map[lower] ?: PRRecord(
+                     name = ex.name, bestW = 0.0, bestWR = 0, bestWDate = "",
+                     bestE1rm = 0.0, bestE1rmW = 0.0, bestE1rmR = 0, bestE1rmDate = "",
++                    bestT = 0L, bestTDate = "", bestBWR = 0, bestBWRDate = "",
+                     totalSets = 0, totalSessions = 0
+                 )
+ 
+@@ -178,12 +249,18 @@ object DataLogic {
+                 var newBestE1rmW = current.bestE1rmW
+                 var newBestE1rmR = current.bestE1rmR
+                 var newBestE1rmDate = current.bestE1rmDate
++                var newBestT = current.bestT
++                var newBestTDate = current.bestTDate
++                var newBestBWR = current.bestBWR
++                var newBestBWRDate = current.bestBWRDate
+                 var sessionSetCount = 0
+ 
+                 for (s in ex.sets) {
+                     sessionSetCount++
+                     val w = s.w ?: 0.0
+                     val r = s.r ?: 0
++                    val dur = s.t ?: 0L
++
+                     if (w > 0.0 && r > 0) {
+                         if (w > newBestW) {
+                             newBestW = w
+@@ -198,6 +275,18 @@ object DataLogic {
+                             newBestE1rmR = r
+                             newBestE1rmDate = sess.date
+                         }
++                    } else if (dur > 0L) {
++                        // Timed set (e.g. plank hold, farmer's carry) — PR is the longest duration
++                        if (dur > newBestT) {
++                            newBestT = dur
++                            newBestTDate = sess.date
++                        }
++                    } else if (w == 0.0 && r > 0 && s.w == null) {
++                        // Bodyweight reps, no weight logged — PR is the most reps
++                        if (r > newBestBWR) {
++                            newBestBWR = r
++                            newBestBWRDate = sess.date
++                        }
+                     }
+                 }
+ 
+@@ -205,12 +294,16 @@ object DataLogic {
+                     bestW = newBestW, bestWR = newBestWR, bestWDate = newBestWDate,
+                     bestE1rm = newBestE1rm, bestE1rmW = newBestE1rmW, bestE1rmR = newBestE1rmR,
+                     bestE1rmDate = newBestE1rmDate,
++                    bestT = newBestT, bestTDate = newBestTDate,
++                    bestBWR = newBestBWR, bestBWRDate = newBestBWRDate,
+                     totalSets = current.totalSets + sessionSetCount,
+                     totalSessions = current.totalSessions + 1
+                 )
+             }
+         }
+ 
+-        return map.values.filter { it.bestW > 0.0 }.sortedByDescending { it.bestE1rm }
++        return map.values
++            .filter { it.bestW > 0.0 || it.bestT > 0L || it.bestBWR > 0 }
++            .sortedByDescending { if (it.bestE1rm > 0.0) it.bestE1rm else if (it.bestT > 0L) it.bestT.toDouble() else it.bestBWR.toDouble() }
+     }
+ }
+diff --git a/app/src/main/java/com/mbosse/gymloga/ui/components/GymComponents.kt b/app/src/main/java/com/mbosse/gymloga/ui/components/GymComponents.kt
+index 4cbe4e1..e2e5ad0 100644
+--- a/app/src/main/java/com/mbosse/gymloga/ui/components/GymComponents.kt
++++ b/app/src/main/java/com/mbosse/gymloga/ui/components/GymComponents.kt
+@@ -129,30 +129,48 @@ fun GymInput(
+ 
+ @Composable
+ fun SetBadge(set: WorkoutSet) {
+-    if (set.note != null && set.w == null && set.r == null) {
+-        Box(
+-            modifier = Modifier
+-                .padding(2.dp)
+-                .background(SurfaceHi, RoundedCornerShape(4.dp))
+-                .border(1.dp, Border, RoundedCornerShape(4.dp))
+-                .padding(vertical = 3.dp, horizontal = 8.dp)
+-        ) {
+-            Text(set.note, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+-        }
+-    } else {
+-        Box(
+-            modifier = Modifier
+-                .padding(2.dp)
+-                .background(SurfaceHi, RoundedCornerShape(4.dp))
+-                .border(1.dp, Border, RoundedCornerShape(4.dp))
+-                .padding(vertical = 3.dp, horizontal = 8.dp)
+-        ) {
+-            Row(verticalAlignment = Alignment.CenterVertically) {
+-                Text("${set.w}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold))
+-                Text("×", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
+-                Text("${set.r}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold))
+-                if (set.note != null) {
+-                    Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
++    val isFreeformNote = set.note != null && set.w == null && set.r == null && set.t == null
++    Box(
++        modifier = Modifier
++            .padding(2.dp)
++            .background(SurfaceHi, RoundedCornerShape(4.dp))
++            .border(1.dp, Border, RoundedCornerShape(4.dp))
++            .padding(vertical = 3.dp, horizontal = 8.dp)
++    ) {
++        when {
++            isFreeformNote -> {
++                Text(set.note!!, style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
++            }
++            set.t != null -> {
++                // Timed set (e.g. plank hold): show duration, no weight/reps
++                Row(verticalAlignment = Alignment.CenterVertically) {
++                    Text(
++                        com.mbosse.gymloga.data.DataLogic.formatDuration(set.t),
++                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold)
++                    )
++                    if (set.note != null) {
++                        Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
++                    }
++                }
++            }
++            set.w == null && set.r != null -> {
++                // Weightless (bodyweight) set: reps only, no weight number
++                Row(verticalAlignment = Alignment.CenterVertically) {
++                    Text("${set.r}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold))
++                    Text(" reps", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
++                    if (set.note != null) {
++                        Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
++                    }
++                }
++            }
++            else -> {
++                Row(verticalAlignment = Alignment.CenterVertically) {
++                    Text("${set.w}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Accent, fontWeight = FontWeight.Bold))
++                    Text("×", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
++                    Text("${set.r}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold))
++                    if (set.note != null) {
++                        Text(" (${set.note})", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp, color = TextDim))
++                    }
+                 }
+             }
+         }
+@@ -186,5 +204,5 @@ fun formatDate(iso: String): String {
+     }
+ }
+ 
+-fun formatVolume(lbs: Long): String =
+-    if (lbs >= 1000) "${"%.1f".format(lbs / 1000.0)}k lbs" else "$lbs lbs"
++fun formatVolume(kg: Long): String =
++    if (kg >= 1000) "${"%.1f".format(kg / 1000.0)}k kg" else "$kg kg"
+diff --git a/app/src/main/java/com/mbosse/gymloga/ui/screens/ExerciseHistoryView.kt b/app/src/main/java/com/mbosse/gymloga/ui/screens/ExerciseHistoryView.kt
+index 740d849..70edb7b 100644
+--- a/app/src/main/java/com/mbosse/gymloga/ui/screens/ExerciseHistoryView.kt
++++ b/app/src/main/java/com/mbosse/gymloga/ui/screens/ExerciseHistoryView.kt
+@@ -59,18 +59,51 @@ fun ExerciseHistoryView(viewModel: GymLogaViewModel, sessions: List<Session>) {
+         if (history.isEmpty()) {
+             Text("No data.", style = MaterialTheme.typography.bodyLarge.copy(color = TextDim), modifier = Modifier.padding(top = 8.dp))
+         } else {
+-            val bestEntry = history.maxByOrNull { it.bestW }
+-            if (bestEntry != null && bestEntry.bestW > 0) {
++            val bestWEntry = history.maxByOrNull { it.bestW }
++            val bestTEntry = history.maxByOrNull { it.bestT }
++            val bestBWREntry = history.maxByOrNull { it.bestBWR }
++
++            if (bestWEntry != null && bestWEntry.bestW > 0) {
++                Box(
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .padding(vertical = 6.dp)
++                        .background(Surface, RoundedCornerShape(6.dp))
++                        .border(1.dp, Green.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
++                        .padding(10.dp, 8.dp)
++                ) {
++                    Text(
++                        "BEST: ${bestWEntry.bestW}×${bestWEntry.bestR} · est 1RM: ${kotlin.math.round(bestWEntry.bestW * (1 + bestWEntry.bestR.toDouble() / 30)).toLong()}",
++                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Green, fontWeight = FontWeight.Bold)
++                    )
++                }
++            }
++            if (bestTEntry != null && bestTEntry.bestT > 0) {
++                Box(
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .padding(vertical = 6.dp)
++                        .background(Surface, RoundedCornerShape(6.dp))
++                        .border(1.dp, Green.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
++                        .padding(10.dp, 8.dp)
++                ) {
++                    Text(
++                        "LONGEST HOLD: ${DataLogic.formatDuration(bestTEntry.bestT)}",
++                        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Green, fontWeight = FontWeight.Bold)
++                    )
++                }
++            }
++            if (bestBWREntry != null && bestBWREntry.bestBWR > 0) {
+                 Box(
+                     modifier = Modifier
+                         .fillMaxWidth()
+-                        .padding(vertical = 12.dp)
++                        .padding(vertical = 6.dp)
+                         .background(Surface, RoundedCornerShape(6.dp))
+                         .border(1.dp, Green.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                         .padding(10.dp, 8.dp)
+                 ) {
+                     Text(
+-                        "BEST: ${bestEntry.bestW}×${bestEntry.bestR} · est 1RM: ${kotlin.math.round(bestEntry.bestW * (1 + bestEntry.bestR.toDouble() / 30)).toLong()}",
++                        "MOST REPS: ${bestBWREntry.bestBWR}",
+                         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = Green, fontWeight = FontWeight.Bold)
+                     )
+                 }
+diff --git a/app/src/main/java/com/mbosse/gymloga/ui/screens/LogView.kt b/app/src/main/java/com/mbosse/gymloga/ui/screens/LogView.kt
+index 05d5cd4..652b875 100644
+--- a/app/src/main/java/com/mbosse/gymloga/ui/screens/LogView.kt
++++ b/app/src/main/java/com/mbosse/gymloga/ui/screens/LogView.kt
+@@ -93,7 +93,7 @@ fun LogView(viewModel: GymLogaViewModel) {
+         )
+ 
+         Text(
+-            "135x5 one set · 20x10x2 two sets · 30s freeform",
++            "80x5 one set (kg) · 20x10x2 two sets · x10x3 bodyweight · 1h20m timed",
+             style = MaterialTheme.typography.labelSmall.copy(color = TextDim),
+             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+         )
+@@ -220,7 +220,7 @@ private fun ExerciseCard(
+                     GymInput(
+                         value = curSet,
+                         onValueChange = onCurSetChange,
+-                        placeholder = "135x5 or 20x10x2",
++                        placeholder = "80x5, x10x3, or 1h20m",
+                         modifier = Modifier.weight(1f),
+                         onDone = { onAddSet() }
+                     )
+diff --git a/app/src/main/java/com/mbosse/gymloga/ui/screens/PRsView.kt b/app/src/main/java/com/mbosse/gymloga/ui/screens/PRsView.kt
+index 63da6e4..481ab98 100644
+--- a/app/src/main/java/com/mbosse/gymloga/ui/screens/PRsView.kt
++++ b/app/src/main/java/com/mbosse/gymloga/ui/screens/PRsView.kt
+@@ -86,21 +86,43 @@ fun PRsView(viewModel: GymLogaViewModel, sessions: List<Session>) {
+                     }
+                     Spacer(modifier = Modifier.height(6.dp))
+                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+-                        Column(modifier = Modifier.width(100.dp)) {
+-                            Text("HEAVIEST", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+-                            Row(verticalAlignment = Alignment.Bottom) {
+-                                Text("${pr.bestW}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent))
+-                                Text("×${pr.bestWR}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
++                        if (pr.bestW > 0.0) {
++                            Column(modifier = Modifier.width(100.dp)) {
++                                Text("HEAVIEST", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
++                                Row(verticalAlignment = Alignment.Bottom) {
++                                    Text("${pr.bestW}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent))
++                                    Text("×${pr.bestWR}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 12.sp, color = TextDim))
++                                }
++                                Text(formatDate(pr.bestWDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
++                            }
++                            Column(modifier = Modifier.width(100.dp)) {
++                                Text("EST 1RM", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
++                                Text("${kotlin.math.round(pr.bestE1rm).toLong()}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Green))
++                                Text(
++                                    "${pr.bestE1rmW}×${pr.bestE1rmR} · ${formatDate(pr.bestE1rmDate)}",
++                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim)
++                                )
++                            }
++                        }
++                        if (pr.bestT > 0L) {
++                            Column(modifier = Modifier.width(100.dp)) {
++                                Text("LONGEST HOLD", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
++                                Text(
++                                    DataLogic.formatDuration(pr.bestT),
++                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent)
++                                )
++                                Text(formatDate(pr.bestTDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
+                             }
+-                            Text(formatDate(pr.bestWDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
+                         }
+-                        Column(modifier = Modifier.width(100.dp)) {
+-                            Text("EST 1RM", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+-                            Text("${kotlin.math.round(pr.bestE1rm).toLong()}", style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Green))
+-                            Text(
+-                                "${pr.bestE1rmW}×${pr.bestE1rmR} · ${formatDate(pr.bestE1rmDate)}",
+-                                style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim)
+-                            )
++                        if (pr.bestBWR > 0) {
++                            Column(modifier = Modifier.width(100.dp)) {
++                                Text("MOST REPS", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
++                                Text(
++                                    "${pr.bestBWR}",
++                                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Accent)
++                                )
++                                Text(formatDate(pr.bestBWRDate), style = MaterialTheme.typography.bodyLarge.copy(fontSize = 10.sp, color = TextDim))
++                            }
+                         }
+                     }
+                 }
+diff --git a/app/src/test/java/com/mbosse/gymloga/data/DataLogicTest.kt b/app/src/test/java/com/mbosse/gymloga/data/DataLogicTest.kt
+index fa3b38b..6189acd 100644
+--- a/app/src/test/java/com/mbosse/gymloga/data/DataLogicTest.kt
++++ b/app/src/test/java/com/mbosse/gymloga/data/DataLogicTest.kt
+@@ -49,6 +49,75 @@ class DataLogicTest {
+         assertTrue(DataLogic.parseSets("   ").isEmpty())
+     }
+ 
++    // ── parseSets: timed entries ──────────────────────────────────────────────
++
++    @Test
++    fun parseSets_minutesOnly() {
++        val sets = DataLogic.parseSets("30m")
++        assertEquals(1, sets.size)
++        assertEquals(1800L, sets[0].t)
++        assertNull(sets[0].w)
++        assertNull(sets[0].r)
++    }
++
++    @Test
++    fun parseSets_hoursOnly() {
++        val sets = DataLogic.parseSets("2h")
++        assertEquals(1, sets.size)
++        assertEquals(7200L, sets[0].t)
++    }
++
++    @Test
++    fun parseSets_secondsOnly() {
++        val sets = DataLogic.parseSets("20s")
++        assertEquals(1, sets.size)
++        assertEquals(20L, sets[0].t)
++    }
++
++    @Test
++    fun parseSets_hoursAndMinutes() {
++        val sets = DataLogic.parseSets("1h20m")
++        assertEquals(1, sets.size)
++        assertEquals(4800L, sets[0].t)
++    }
++
++    @Test
++    fun parseSets_timedWithSetsMultiplier() {
++        val sets = DataLogic.parseSets("30sx3")
++        assertEquals(3, sets.size)
++        sets.forEach { assertEquals(30L, it.t) }
++    }
++
++    @Test
++    fun parseSets_freeformWithText_stillNoteOnly() {
++        val sets = DataLogic.parseSets("30s rest")
++        assertEquals(1, sets.size)
++        assertNull(sets[0].t)
++        assertNull(sets[0].w)
++        assertNull(sets[0].r)
++        assertEquals("30s rest", sets[0].note)
++    }
++
++    // ── parseSets: weightless (bodyweight) entries ──────────────────────────────
++
++    @Test
++    fun parseSets_bodyweightRepsXsets() {
++        val sets = DataLogic.parseSets("x10x3")
++        assertEquals(3, sets.size)
++        sets.forEach {
++            assertNull(it.w)
++            assertEquals(10, it.r)
++        }
++    }
++
++    @Test
++    fun parseSets_bodyweightRepsOnly() {
++        val sets = DataLogic.parseSets("x12")
++        assertEquals(1, sets.size)
++        assertNull(sets[0].w)
++        assertEquals(12, sets[0].r)
++    }
++
+     // ── getSessionVolume ───────────────────────────────────────────────────────
+ 
+     @Test
+@@ -144,4 +213,50 @@ class DataLogicTest {
+         assertEquals(140.0, prs[0].bestW, 0.001)
+         assertEquals(2, prs[0].totalSessions)
+     }
++
++    // ── getAllPRs: timed and bodyweight records ─────────────────────────────────
++
++    @Test
++    fun getAllPRs_timedExercise_tracksLongestHold() {
++        val sessions = listOf(
++            Session(date = "2026-01-01", exercises = listOf(Exercise(name = "Plank", sets = listOf(WorkoutSet(t = 60L))))),
++            Session(date = "2026-01-08", exercises = listOf(Exercise(name = "Plank", sets = listOf(WorkoutSet(t = 90L)))))
++        )
++        val prs = DataLogic.getAllPRs(sessions)
++        assertEquals(1, prs.size)
++        assertEquals(90L, prs[0].bestT)
++        assertEquals("2026-01-08", prs[0].bestTDate)
++        assertEquals(0.0, prs[0].bestW, 0.001)
++    }
++
++    @Test
++    fun getAllPRs_bodyweightExercise_tracksMostReps() {
++        val sessions = listOf(
++            Session(date = "2026-01-01", exercises = listOf(Exercise(name = "Pull-up", sets = listOf(WorkoutSet(r = 8))))),
++            Session(date = "2026-01-08", exercises = listOf(Exercise(name = "Pull-up", sets = listOf(WorkoutSet(r = 12)))))
++        )
++        val prs = DataLogic.getAllPRs(sessions)
++        assertEquals(1, prs.size)
++        assertEquals(12, prs[0].bestBWR)
++        assertEquals("2026-01-08", prs[0].bestBWRDate)
++    }
++
++    // ── parseDurationSeconds / formatDuration ────────────────────────────────────
++
++    @Test
++    fun parseDurationSeconds_variousFormats() {
++        assertEquals(1800L, DataLogic.parseDurationSeconds("30m"))
++        assertEquals(7200L, DataLogic.parseDurationSeconds("2h"))
++        assertEquals(20L, DataLogic.parseDurationSeconds("20s"))
++        assertEquals(4800L, DataLogic.parseDurationSeconds("1h20m"))
++        assertNull(DataLogic.parseDurationSeconds("135"))
++        assertNull(DataLogic.parseDurationSeconds("30s rest"))
++    }
++
++    @Test
++    fun formatDuration_roundTrips() {
++        assertEquals("1h20m", DataLogic.formatDuration(4800L))
++        assertEquals("2h", DataLogic.formatDuration(7200L))
++        assertEquals("20s", DataLogic.formatDuration(20L))
++    }
+ }

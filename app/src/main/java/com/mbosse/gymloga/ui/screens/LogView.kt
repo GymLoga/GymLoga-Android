@@ -93,7 +93,7 @@ fun LogView(viewModel: GymLogaViewModel) {
         )
 
         Text(
-            "135x5 one set · 20x10x2 two sets · 30s freeform",
+            "80x5 one set (kg) · 20x10x2 two sets · x10x3 bodyweight · 1h20m timed",
             style = MaterialTheme.typography.labelSmall.copy(color = TextDim),
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
         )
@@ -220,7 +220,7 @@ private fun ExerciseCard(
                     GymInput(
                         value = curSet,
                         onValueChange = onCurSetChange,
-                        placeholder = "135x5 or 20x10x2",
+                        placeholder = "80x5, x10x3, or 1h20m",
                         modifier = Modifier.weight(1f),
                         onDone = { onAddSet() }
                     )
